@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="HR Management Platform — Employee tracking, document expiry, and workforce analytics powered by Google Apps Script.">
+  <title>HR Management Platform</title>
+
+  <!-- Google Fonts (preconnect for performance) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
+  <!-- Design System CSS -->
+  <style><?!= include('Frontend/css/main') ?></style>
+  <style><?!= include('Frontend/css/components') ?></style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════════════════════
+     APP LOADING SCREEN
+═══════════════════════════════════════════════════════════════ -->
+<div class="app-loading" id="appLoading" role="status" aria-label="Loading application">
+  <div class="sidebar__brand-icon" style="width:52px;height:52px;font-size:24px;margin-bottom:8px;">🏢</div>
+  <div class="app-loading__spinner"></div>
+  <p class="app-loading__text">Initializing HR Platform…</p>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     APP SHELL
+═══════════════════════════════════════════════════════════════ -->
+<div class="app-shell" id="appShell" aria-hidden="true">
+
+  <!-- ─────────────────── SIDEBAR ─────────────────── -->
+  <nav class="sidebar" id="sidebar" role="navigation" aria-label="Main navigation">
+
+    <!-- Brand -->
+    <div class="sidebar__brand">
+      <div class="sidebar__brand-icon" aria-hidden="true">🏢</div>
+      <span class="sidebar__brand-title">HR Platform</span>
+    </div>
+
+    <!-- Navigation -->
+    <div class="sidebar__nav" role="list">
+
+      <!-- Analytics Group -->
+      <div class="sidebar__section-label">Analytics</div>
+      <div class="sidebar__nav-item sidebar__nav-item--active"
+           role="listitem"
+           data-page="dashboard"
+           tabindex="0"
+           aria-label="Dashboard"
+           aria-current="page">
+        <span class="sidebar__nav-icon" aria-hidden="true">📊</span>
+        <span class="sidebar__nav-label">Dashboard</span>
+      </div>
+      <div class="sidebar__nav-item"
+           role="listitem"
+           data-page="insights"
+           tabindex="0"
+           aria-label="HR Insights">
+        <span class="sidebar__nav-icon" aria-hidden="true">📈</span>
+        <span class="sidebar__nav-label">HR Insights</span>
+      </div>
+
+      <!-- Operations Group -->
+      <div class="sidebar__section-label" style="margin-top:8px;">Operations</div>
+      <div class="sidebar__nav-item"
+           role="listitem"
+           data-page="employees"
+           tabindex="0"
+           aria-label="Employees">
+        <span class="sidebar__nav-icon" aria-hidden="true">👥</span>
+        <span class="sidebar__nav-label">Employees</span>
+      </div>
+      <div class="sidebar__nav-item"
+           role="listitem"
+           data-page="documents"
+           tabindex="0"
+           aria-label="Document Center">
+        <span class="sidebar__nav-icon" aria-hidden="true">📁</span>
+        <span class="sidebar__nav-label">Document Center</span>
+      </div>
+
+      <!-- Administration Group -->
+      <div class="sidebar__section-label" style="margin-top:8px;">Administration</div>
+      <div class="sidebar__nav-item"
+           role="listitem"
+           data-page="settings"
+           tabindex="0"
+           aria-label="Settings">
+        <span class="sidebar__nav-icon" aria-hidden="true">⚙️</span>
+        <span class="sidebar__nav-label">Settings</span>
+      </div>
+
+    </div>
+
+    <!-- Sidebar Footer -->
+    <div class="sidebar__footer">
+      <div style="font-size:var(--font-size-xs);color:rgba(255,255,255,0.35);text-align:center;">
+        HR Platform v1.0
+      </div>
+    </div>
+  </nav>
+
+  <!-- ─────────────────── HEADER ─────────────────── -->
+  <header class="app-header" role="banner">
+
+    <!-- Sidebar Toggle -->
+    <button class="header__toggle-btn" id="sidebarToggle" aria-label="Toggle sidebar" aria-expanded="false">
+      ☰
+    </button>
+
+    <!-- Page Title -->
+    <h1 class="header__page-title" id="headerPageTitle">Dashboard</h1>
+
+    <!-- Global Search -->
+    <div class="global-search" role="search">
+      <span class="global-search__icon" aria-hidden="true">🔍</span>
+      <input
+        type="search"
+        class="global-search__input"
+        id="globalSearchInput"
+        placeholder="Search employees… (Ctrl+K)"
+        autocomplete="off"
+        aria-label="Search employees globally"
+        aria-controls="globalSearchResults"
+        aria-expanded="false"
+      >
+      <div class="global-search__results" id="globalSearchResults" role="listbox" aria-label="Search results"></div>
+    </div>
+
+    <!-- Header Actions -->
+    <div class="header__actions" role="toolbar" aria-label="Header actions">
+      <button class="header__icon-btn" id="refreshBtn" aria-label="Refresh data" title="Refresh">
+        🔄
+      </button>
+    </div>
+
+  </header>
+
+  <!-- ─────────────────── MAIN CONTENT ─────────────────── -->
+  <main class="app-main" id="appMain" role="main">
+
+    <!-- Dashboard Page -->
+    <section class="page-view page-view--active" id="page-dashboard" aria-labelledby="dashboardHeading">
+      <div class="page-header">
+        <div class="page-header__left">
+          <h2 id="dashboardHeading" class="page-header__title">Dashboard</h2>
+          <p class="page-header__subtitle">Workforce overview and document expiry alerts</p>
+        </div>
+        <div class="page-header__actions">
+          <span id="dashboardLastUpdated" class="text-muted" style="font-size:var(--font-size-xs);"></span>
+        </div>
+      </div>
+      <!-- Content injected by dashboard.js -->
+      <div id="dashboardContent"></div>
+    </section>
+
+    <!-- HR Insights Page -->
+    <section class="page-view" id="page-insights" aria-labelledby="insightsHeading">
+      <div class="page-header">
+        <div class="page-header__left">
+          <h2 id="insightsHeading" class="page-header__title">HR Insights</h2>
+          <p class="page-header__subtitle">Executive workforce analytics and trends</p>
+        </div>
+        <div class="page-header__actions">
+          <span id="insightsGeneratedAt" class="text-muted" style="font-size:var(--font-size-xs);"></span>
+        </div>
+      </div>
+      <!-- Content injected by insights.js -->
+      <div id="insightsContent"></div>
+    </section>
+
+    <!-- Employees Page -->
+    <section class="page-view" id="page-employees" aria-labelledby="employeesHeading">
+      <div class="page-header">
+        <div class="page-header__left">
+          <h2 id="employeesHeading" class="page-header__title">Employees</h2>
+          <p class="page-header__subtitle">Employee directory and profile management</p>
+        </div>
+        <div class="page-header__actions" id="employeesHeaderActions"></div>
+      </div>
+      <!-- Content injected by employees.js -->
+      <div id="employeesContent"></div>
+    </section>
+
+    <!-- Document Center Page -->
+    <section class="page-view" id="page-documents" aria-labelledby="documentsHeading">
+      <div class="page-header">
+        <div class="page-header__left">
+          <h2 id="documentsHeading" class="page-header__title">Document Center</h2>
+          <p class="page-header__subtitle">Document expiry tracking and compliance alerts</p>
+        </div>
+        <div class="page-header__actions" id="documentsHeaderActions"></div>
+      </div>
+      <!-- Content injected by documentCenter.js -->
+      <div id="documentsContent"></div>
+    </section>
+
+    <!-- Settings Page -->
+    <section class="page-view" id="page-settings" aria-labelledby="settingsHeading">
+      <div class="page-header">
+        <div class="page-header__left">
+          <h2 id="settingsHeading" class="page-header__title">Settings</h2>
+          <p class="page-header__subtitle">System configuration and preferences</p>
+        </div>
+      </div>
+      <!-- Content injected by settings.js -->
+      <div id="settingsContent"></div>
+    </section>
+
+  </main>
+
+</div><!-- /app-shell -->
+
+<!-- ═══════════════════════════════════════════════════════════
+     EMPLOYEE PROFILE DRAWER
+═══════════════════════════════════════════════════════════════ -->
+<div class="drawer-overlay" id="drawerOverlay" aria-hidden="true"></div>
+<aside class="drawer" id="employeeDrawer" role="complementary" aria-label="Employee profile" aria-hidden="true">
+  <div class="drawer__header">
+    <div class="drawer__avatar" id="drawerAvatar" aria-hidden="true"></div>
+    <div>
+      <div class="drawer__title" id="drawerName">Loading…</div>
+      <div class="drawer__subtitle" id="drawerSubtitle"></div>
+    </div>
+    <button class="drawer__close" id="drawerClose" aria-label="Close employee profile">✕</button>
+  </div>
+
+  <div class="drawer__tabs" role="tablist" aria-label="Employee profile sections">
+    <div class="drawer__tab drawer__tab--active" role="tab" data-tab="personal" aria-selected="true" tabindex="0">Personal</div>
+    <div class="drawer__tab" role="tab" data-tab="job" aria-selected="false" tabindex="-1">Job Details</div>
+    <div class="drawer__tab" role="tab" data-tab="documents" aria-selected="false" tabindex="-1">Documents</div>
+    <div class="drawer__tab" role="tab" data-tab="contact" aria-selected="false" tabindex="-1">Contact</div>
+  </div>
+
+  <div class="drawer__body" id="drawerBody">
+    <!-- Injected by employees.js -->
+  </div>
+</aside>
+
+<!-- ═══════════════════════════════════════════════════════════
+     TOAST CONTAINER
+═══════════════════════════════════════════════════════════════ -->
+<div class="toast-container" id="toastContainer" role="log" aria-live="polite" aria-label="Notifications"></div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     JAVASCRIPT MODULES (order matters)
+═══════════════════════════════════════════════════════════════ -->
+<script><?!= include('Frontend/js/components/Toast') ?></script>
+<script><?!= include('Frontend/js/components/DataTable') ?></script>
+<script><?!= include('Frontend/js/components/Drawer') ?></script>
+<script><?!= include('Frontend/js/components/Charts') ?></script>
+<script><?!= include('Frontend/js/api') ?></script>
+<script><?!= include('Frontend/js/modules/dashboard') ?></script>
+<script><?!= include('Frontend/js/modules/employees') ?></script>
+<script><?!= include('Frontend/js/modules/documentCenter') ?></script>
+<script><?!= include('Frontend/js/modules/insights') ?></script>
+<script><?!= include('Frontend/js/modules/settings') ?></script>
+<script><?!= include('Frontend/js/modules/search') ?></script>
+<script><?!= include('Frontend/js/app') ?></script>
+
+</body>
+</html>
