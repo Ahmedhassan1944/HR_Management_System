@@ -1,0 +1,2099 @@
+<script>
+/* --- js/components/Toast.js --- */
+/**
+ * @file Toast.js
+ * @description Reusable toast notification component.
+ *              Usage: Toast.show('Title', 'Message', 'success'|'error'|'warning'|'info')
+ */
+
+'use strict';
+
+const Toast = (() => {
+
+  const ICONS = {
+    success: '✅',
+    error:   '❌',
+    warning: '⚠️',
+    info:    'ℹ️',
+  };
+
+  /**
+   * Shows a toast notification.
+   * @param {string} title
+   * @param {string} message
+   * @param {'success'|'error'|'warning'|'info'} [type='info']
+   * @param {number} [duration=4000] Auto-dismiss after ms
+   */
+  function show(title, message, type = 'info', duration = 4000) {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast--${type}`;
+    toast.setAttribute('role', 'alert');
+    toast.setAttribute('aria-live', 'assertive');
+    toast.innerHTML = `
+      <span class="toast__icon" aria-hidden="true">${ICONS[type] ?? ICONS.info}</span>
+      <div class="toast__content">
+        <div class="toast__title">${_escape(title)}</div>
+        ${message ? `<div class="toast__message">${_escape(message)}</div>` : ''}
+      </div>
+    `;
+
+    container.appendChild(toast);
+
+    // Auto-dismiss
+    setTimeout(() => _dismiss(toast), duration);
+  }
+
+  function _dismiss(toast) {
+    toast.classList.add('toast--hiding');
+    toast.addEventListener('animationend', () => toast.remove(), { once: true });
+    setTimeout(() => toast.remove(), 500); // Fallback
+  }
+
+  function _escape(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  return { show };
+})();
+
+
+/* --- js/components/DataTable.js --- */
+/**
+ * @file DataTable.js
+ * @description Reusable, client-side data table component.
+ *              Supports: sorting, pagination, search filtering, custom renderers.
+ *
+ * Usage:
+ *   const table = DataTable.create({
+ *     containerId: 'myContainer',
+ *     columns: [{ key, label, render? }],
+ *     data: [],
+ *     pageSize: 25,
+ *     onRowAction: (action, row) => {}
+ *   });
+ *   table.setData(rows);
+ */
+
+'use strict';
+
+const DataTable = (() => {
+
+  /**
+   * Creates a DataTable instance inside the given container.
+   * @param {Object} config
+   * @returns {{ setData: Function, refresh: Function }}
+   */
+  function create(config) {
+    const {
+      containerId,
+      columns = [],
+      data = [],
+      pageSize = 25,
+      searchFields = [],
+      onRowAction = null,
+      emptyMessage = 'No records found.',
+    } = config;
+
+    const container = document.getElementById(containerId);
+    if (!container) return null;
+
+    // State
+    let _data       = [...data];
+    let _filtered   = [...data];
+    let _sortKey    = null;
+    let _sortDir    = 'asc';
+    let _page       = 1;
+    let _pageSize   = pageSize;
+    let _searchTerm = '';
+
+    // ── Build DOM ──────────────────────────────────────────────
+    container.innerHTML = `
+      <div class="table-container">
+        <div class="table-toolbar">
+          <div class="table-toolbar__filters">
+            <div class="table-search">
+              <span class="table-search__icon" aria-hidden="true">🔍</span>
+              <input
+                type="search"
+                class="table-search__input"
+                id="${containerId}-search"
+                placeholder="Search…"
+                aria-label="Search table"
+              >
+            </div>
+            <div id="${containerId}-extra-filters"></div>
+          </div>
+          <div class="table-toolbar__actions" id="${containerId}-actions"></div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="data-table" role="grid" aria-label="Data table">
+            <thead id="${containerId}-thead"></thead>
+            <tbody id="${containerId}-tbody"></tbody>
+          </table>
+        </div>
+        <div class="table-pagination" id="${containerId}-pagination"></div>
+      </div>
+    `;
+
+    const thead      = document.getElementById(`${containerId}-thead`);
+    const tbody      = document.getElementById(`${containerId}-tbody`);
+    const pagination = document.getElementById(`${containerId}-pagination`);
+    const searchInput= document.getElementById(`${containerId}-search`);
+
+    // ── Render Header ──────────────────────────────────────────
+    function _renderHeader() {
+      const ths = columns.map(col => `
+        <th data-key="${col.key ?? ''}" class="${_sortKey === col.key ? 'sorted' : ''}"
+            tabindex="0" scope="col">
+          ${_escHtml(col.label ?? '')}
+          ${col.sortable !== false ? `<span class="sort-icon" aria-hidden="true">${_sortKey === col.key ? (_sortDir === 'asc' ? '▲' : '▼') : '⇅'}</span>` : ''}
+        </th>
+      `).join('');
+      thead.innerHTML = `<tr>${ths}</tr>`;
+
+      // Sort listeners
+      thead.querySelectorAll('th[data-key]').forEach(th => {
+        th.addEventListener('click', () => _handleSort(th.dataset.key));
+        th.addEventListener('keydown', e => { if (e.key === 'Enter') _handleSort(th.dataset.key); });
+      });
+    }
+
+    // ── Render Rows ────────────────────────────────────────────
+    function _renderRows() {
+      const start = (_page - 1) * _pageSize;
+      const page  = _filtered.slice(start, start + _pageSize);
+
+      if (page.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="${columns.length}" style="padding:var(--space-12) var(--space-6); text-align:center; color:var(--color-text-muted);">
+              <div class="empty-state__icon">📋</div>
+              <div>${_escHtml(emptyMessage)}</div>
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = page.map(row => {
+        const cells = columns.map(col => {
+          const raw   = row[col.key] ?? '';
+          const value = col.render ? col.render(raw, row) : _escHtml(String(raw));
+          return `<td>${value}</td>`;
+        }).join('');
+        return `<tr role="row">${cells}</tr>`;
+      }).join('');
+
+      // Attach row action listeners
+      if (onRowAction) {
+        tbody.querySelectorAll('[data-action]').forEach(el => {
+          el.addEventListener('click', e => {
+            e.stopPropagation();
+            const btn = e.currentTarget;
+            const rowIndex = parseInt(btn.closest('tr').rowIndex) - 1 + start;
+            onRowAction(btn.dataset.action, _filtered[rowIndex]);
+          });
+        });
+      }
+    }
+
+    // ── Render Pagination ──────────────────────────────────────
+    function _renderPagination() {
+      const total = _filtered.length;
+      const pages = Math.ceil(total / _pageSize);
+      const start = (_page - 1) * _pageSize + 1;
+      const end   = Math.min(_page * _pageSize, total);
+
+      let btns = '';
+      btns += `<button class="pagination-btn" id="${containerId}-prev" aria-label="Previous page" ${_page <= 1 ? 'disabled' : ''}>‹</button>`;
+      for (let i = 1; i <= pages; i++) {
+        if (i === 1 || i === pages || Math.abs(i - _page) <= 1) {
+          btns += `<button class="pagination-btn ${i === _page ? 'pagination-btn--active' : ''}" data-page="${i}" aria-label="Page ${i}" aria-current="${i === _page ? 'page' : 'false'}">${i}</button>`;
+        } else if (Math.abs(i - _page) === 2) {
+          btns += `<span style="padding:0 4px;color:var(--color-text-muted)">…</span>`;
+        }
+      }
+      btns += `<button class="pagination-btn" id="${containerId}-next" aria-label="Next page" ${_page >= pages ? 'disabled' : ''}>›</button>`;
+
+      pagination.innerHTML = `
+        <div class="table-pagination__info">
+          Showing <strong>${total === 0 ? 0 : start}–${end}</strong> of <strong>${total}</strong> records
+        </div>
+        <div class="table-pagination__controls">${btns}</div>
+      `;
+
+      pagination.querySelectorAll('[data-page]').forEach(btn => {
+        btn.addEventListener('click', () => { _page = parseInt(btn.dataset.page); _render(); });
+      });
+      const prevBtn = document.getElementById(`${containerId}-prev`);
+      const nextBtn = document.getElementById(`${containerId}-next`);
+      if (prevBtn) prevBtn.addEventListener('click', () => { _page--; _render(); });
+      if (nextBtn) nextBtn.addEventListener('click', () => { _page++; _render(); });
+    }
+
+    // ── Sorting ────────────────────────────────────────────────
+    function _handleSort(key) {
+      if (!key) return;
+      if (_sortKey === key) {
+        _sortDir = _sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        _sortKey = key;
+        _sortDir = 'asc';
+      }
+      _applyFiltersAndSort();
+      _render();
+    }
+
+    // ── Filtering & Sorting ────────────────────────────────────
+    function _applyFiltersAndSort() {
+      let result = [..._data];
+      const term = _searchTerm.toLowerCase().trim();
+
+      if (term) {
+        const fields = searchFields.length > 0 ? searchFields : columns.map(c => c.key);
+        result = result.filter(row =>
+          fields.some(f => String(row[f] ?? '').toLowerCase().includes(term))
+        );
+      }
+
+      if (_sortKey) {
+        result.sort((a, b) => {
+          const av = String(a[_sortKey] ?? '').toLowerCase();
+          const bv = String(b[_sortKey] ?? '').toLowerCase();
+          return _sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+        });
+      }
+
+      _filtered = result;
+      _page     = 1;
+    }
+
+    // ── Full Render ────────────────────────────────────────────
+    function _render() {
+      _renderHeader();
+      _renderRows();
+      _renderPagination();
+    }
+
+    // ── Search Listener ────────────────────────────────────────
+    let _searchDebounce;
+    searchInput.addEventListener('input', () => {
+      clearTimeout(_searchDebounce);
+      _searchDebounce = setTimeout(() => {
+        _searchTerm = searchInput.value;
+        _applyFiltersAndSort();
+        _render();
+      }, 200);
+    });
+
+    // ── Public Methods ─────────────────────────────────────────
+    function setData(rows) {
+      _data = [...rows];
+      _applyFiltersAndSort();
+      _render();
+    }
+
+    // Initial render
+    _render();
+
+    return {
+      setData,
+      refresh: () => _render(),
+      getExtraFiltersContainer: () => document.getElementById(`${containerId}-extra-filters`),
+      getActionsContainer: () => document.getElementById(`${containerId}-actions`),
+      applyFilter: (fn) => {
+        _filtered = _data.filter(fn);
+        _page = 1;
+        _render();
+      },
+    };
+  }
+
+  // ── Helpers ────────────────────────────────────────────────
+  function _escHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  }
+
+  return { create };
+})();
+
+
+/* --- js/components/Drawer.js --- */
+/**
+ * @file Drawer.js
+ * @description Employee profile drawer component controller.
+ *              Manages open/close state, tab switching, and profile rendering.
+ */
+
+'use strict';
+
+const Drawer = (() => {
+
+  const drawerEl    = document.getElementById('employeeDrawer');
+  const overlayEl   = document.getElementById('drawerOverlay');
+  const closeBtn    = document.getElementById('drawerClose');
+  const drawerBody  = document.getElementById('drawerBody');
+  const drawerName  = document.getElementById('drawerName');
+  const drawerSub   = document.getElementById('drawerSubtitle');
+  const drawerAvatar= document.getElementById('drawerAvatar');
+
+  let _currentEmployee = null;
+
+  // ── Lifecycle ──────────────────────────────────────────────
+
+  function open(employee) {
+    _currentEmployee = employee;
+    _renderProfile(employee);
+    drawerEl.classList.add('drawer--open');
+    overlayEl.classList.add('drawer-overlay--visible');
+    drawerEl.setAttribute('aria-hidden', 'false');
+    overlayEl.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+
+    // Focus management
+    setTimeout(() => closeBtn.focus(), 300);
+  }
+
+  function close() {
+    drawerEl.classList.remove('drawer--open');
+    overlayEl.classList.remove('drawer-overlay--visible');
+    drawerEl.setAttribute('aria-hidden', 'true');
+    overlayEl.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+    _currentEmployee = null;
+  }
+
+  // ── Tab Management ─────────────────────────────────────────
+
+  function _initTabs() {
+    const tabs = drawerEl.querySelectorAll('.drawer__tab');
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => _switchTab(tab.dataset.tab));
+      tab.addEventListener('keydown', e => {
+        if (e.key === 'Enter' || e.key === ' ') _switchTab(tab.dataset.tab);
+      });
+    });
+  }
+
+  function _switchTab(tabKey) {
+    drawerEl.querySelectorAll('.drawer__tab').forEach(t => {
+      const isActive = t.dataset.tab === tabKey;
+      t.classList.toggle('drawer__tab--active', isActive);
+      t.setAttribute('aria-selected', String(isActive));
+      t.tabIndex = isActive ? 0 : -1;
+    });
+    drawerBody.querySelectorAll('.drawer__tab-panel').forEach(p => {
+      p.classList.toggle('drawer__tab-panel--active', p.dataset.panel === tabKey);
+    });
+  }
+
+  // ── Profile Rendering ──────────────────────────────────────
+
+  function _renderProfile(emp) {
+    // Header
+    const initials = (emp.name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+    drawerAvatar.textContent = initials;
+    drawerName.textContent   = emp.name || '—';
+    drawerSub.textContent    = [emp.title, emp.department].filter(Boolean).join(' · ');
+
+    drawerBody.innerHTML = `
+      <!-- Personal Tab -->
+      <div class="drawer__tab-panel drawer__tab-panel--active" data-panel="personal">
+        <div class="profile-section">
+          <div class="profile-section__title">Personal Information</div>
+          <div class="profile-fields">
+            ${_field('Employee Code', emp.code)}
+            ${_field('English Name', emp.name)}
+            ${_field('Arabic Name', emp.nameAr || '—')}
+            ${_field('Gender', emp.gender || '—')}
+            ${_field('Date of Birth', _formatDate(emp.birthDate))}
+            ${_field('Age', emp.age ? `${emp.age} years` : '—')}
+            ${_field('Nationality', emp.nationality || '—')}
+            ${_field('Classification', emp.class || '—')}
+            ${_field('Employment Type', emp.direct || '—')}
+            ${_field('Local / Expat', emp.localExpat || '—')}
+          </div>
+        </div>
+      </div>
+
+      <!-- Job Details Tab -->
+      <div class="drawer__tab-panel" data-panel="job">
+        <div class="profile-section">
+          <div class="profile-section__title">Job Information</div>
+          <div class="profile-fields">
+            ${_field('Job Title', emp.title || '—')}
+            ${_field('Department', emp.department || '—')}
+            ${_field('Section', emp.section || '—')}
+            ${_field('Project / Site', emp.project || '—')}
+            ${_field('Acting As', emp.actingAs || '—')}
+            ${_field('Hire Date', _formatDate(emp.hireDate))}
+            ${_field('Tenure', emp.tenureYears ? `${emp.tenureYears} years` : '—')}
+            ${_field('Remarks', emp.remarks || '—')}
+          </div>
+        </div>
+      </div>
+
+      <!-- Documents Tab -->
+      <div class="drawer__tab-panel" data-panel="documents">
+        <div class="profile-section">
+          <div class="profile-section__title">Identity Documents</div>
+          <div class="profile-fields">
+            ${_field('Passport No.', emp.passportNo || '—')}
+            ${_fieldWithBadge('Passport Expiry', _formatDate(emp.passportExp), emp.passportStatus)}
+            ${_field('Civil / Resident ID', emp.civilNo || '—')}
+            ${_fieldWithBadge('Civil ID Expiry', _formatDate(emp.civilExp), emp.civilStatus)}
+          </div>
+        </div>
+        <div class="profile-section">
+          <div class="profile-section__title">Contract</div>
+          <div class="profile-fields">
+            ${_fieldWithBadge('Contract Expiry', _formatDate(emp.contractExp), emp.contractStatus)}
+          </div>
+        </div>
+        <div class="profile-section">
+          <div class="profile-section__title">Banking Details</div>
+          <div class="profile-fields">
+            ${_field('Bank', emp.bank || '—')}
+            ${_field('Account No.', emp.bankAcc || '—')}
+            ${_field('SWIFT Code', emp.swift || '—')}
+          </div>
+        </div>
+      </div>
+
+      <!-- Contact Tab -->
+      <div class="drawer__tab-panel" data-panel="contact">
+        <div class="profile-section">
+          <div class="profile-section__title">Contact Information</div>
+          <div class="profile-fields">
+            ${_field('Email', emp.email || '—')}
+            ${_field('Telephone', emp.telephone || '—')}
+          </div>
+        </div>
+        <div class="profile-section">
+          <div class="profile-section__title">Emergency Contacts</div>
+          <div class="profile-fields">
+            ${_field('Contact 1 Phone', emp.emergency1 || '—')}
+            ${_field('Contact 1 Relation', emp.relation1 || '—')}
+            ${_field('Contact 2 Phone', emp.emergency2 || '—')}
+            ${_field('Contact 2 Relation', emp.relation2 || '—')}
+          </div>
+        </div>
+      </div>
+    `;
+
+    _initTabs();
+    _switchTab('personal');
+  }
+
+  // ── Field Helpers ──────────────────────────────────────────
+
+  function _field(label, value) {
+    const isEmpty = !value || value === '—';
+    return `
+      <div class="form-group">
+        <div class="profile-field__label">${_esc(label)}</div>
+        <div class="profile-field__value ${isEmpty ? 'profile-field__value--empty' : ''}">${_esc(value)}</div>
+      </div>
+    `;
+  }
+
+  function _fieldWithBadge(label, value, status) {
+    const badgeClass = _statusToBadgeClass(status);
+    return `
+      <div class="form-group">
+        <div class="profile-field__label">${_esc(label)}</div>
+        <div class="profile-field__value" style="display:flex;align-items:center;gap:8px;">
+          ${_esc(value || '—')}
+          ${status ? `<span class="badge badge--${badgeClass}">${_esc(status)}</span>` : ''}
+        </div>
+      </div>
+    `;
+  }
+
+  function _statusToBadgeClass(status) {
+    const map = { Valid: 'valid', 'Due Soon': 'due-soon', Critical: 'critical', Expired: 'expired', Missing: 'missing' };
+    return map[status] ?? 'neutral';
+  }
+
+  function _formatDate(iso) {
+    if (!iso) return '—';
+    try {
+      const d = new Date(iso);
+      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+    } catch { return iso; }
+  }
+
+  function _esc(str) {
+    return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  // ── Event Listeners ────────────────────────────────────────
+
+  closeBtn?.addEventListener('click', close);
+  overlayEl?.addEventListener('click', close);
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && drawerEl?.classList.contains('drawer--open')) close();
+  });
+
+  return { open, close };
+})();
+
+
+/* --- js/components/Charts.js --- */
+/**
+ * @file Charts.js
+ * @description Chart factory using Chart.js.
+ *              Provides standardized chart creation with consistent theming.
+ *              All charts use the design system color palette.
+ */
+
+'use strict';
+
+const Charts = (() => {
+
+  // ── Design System Palette ──────────────────────────────────
+  const PALETTE = [
+    '#0078d4', '#0091ff', '#00b4d8', '#00c49a',
+    '#107c10', '#d97706', '#e74c3c', '#8b5cf6',
+    '#ec4899', '#64748b', '#0e7490', '#65a30d',
+  ];
+
+  const EXPIRY_PALETTE = {
+    'Valid':    '#107c10',
+    'Due Soon': '#d97706',
+    'Critical': '#e74c3c',
+    'Expired':  '#8b0000',
+    'Missing':  '#9b9bb4',
+  };
+
+  // Global Chart.js defaults
+  if (typeof Chart !== 'undefined') {
+    Chart.defaults.font.family = "'Inter', -apple-system, sans-serif";
+    Chart.defaults.font.size   = 12;
+    Chart.defaults.color       = '#5c5c7a';
+    Chart.defaults.plugins.legend.position = 'bottom';
+    Chart.defaults.plugins.legend.labels.boxWidth = 12;
+    Chart.defaults.plugins.legend.labels.padding  = 16;
+    Chart.defaults.animation.duration = 600;
+  }
+
+  // ── Registry — tracks chart instances to allow re-render ──
+  const _instances = {};
+
+  function _destroy(canvasId) {
+    if (_instances[canvasId]) {
+      _instances[canvasId].destroy();
+      delete _instances[canvasId];
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────
+  //  CHART FACTORIES
+  // ────────────────────────────────────────────────────────────
+
+  /**
+   * Renders a donut chart.
+   * @param {string} canvasId
+   * @param {Object[]} data - [{ label, count }]
+   * @param {string} [title]
+   */
+  function donut(canvasId, data, title = '') {
+    _destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    _instances[canvasId] = new Chart(canvas, {
+      type: 'doughnut',
+      data: {
+        labels: data.map(d => d.label),
+        datasets: [{
+          data: data.map(d => d.count),
+          backgroundColor: PALETTE.slice(0, data.length),
+          borderWidth: 2,
+          borderColor: '#ffffff',
+          hoverOffset: 6,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        cutout: '65%',
+        plugins: {
+          tooltip: { callbacks: {
+            label: ctx => ` ${ctx.label}: ${ctx.parsed} (${Math.round(ctx.parsed / ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0) * 100)}%)`
+          }},
+        },
+      },
+    });
+  }
+
+  /**
+   * Renders a horizontal bar chart.
+   * @param {string} canvasId
+   * @param {Object[]} data - [{ label, count }]
+   */
+  function horizontalBar(canvasId, data) {
+    _destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    _instances[canvasId] = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: data.map(d => d.label),
+        datasets: [{
+          data: data.map(d => d.count),
+          backgroundColor: PALETTE[0],
+          borderRadius: 4,
+          hoverBackgroundColor: PALETTE[1],
+        }],
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { grid: { color: '#f0f2f5' }, ticks: { precision: 0 } },
+          y: { grid: { display: false } },
+        },
+      },
+    });
+  }
+
+  /**
+   * Renders a vertical bar / column chart.
+   * @param {string} canvasId
+   * @param {Object[]} data - [{ label, count }]
+   */
+  function verticalBar(canvasId, data) {
+    _destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    _instances[canvasId] = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: data.map(d => d.label),
+        datasets: [{
+          data: data.map(d => d.count),
+          backgroundColor: PALETTE.slice(0, data.length),
+          borderRadius: 4,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { grid: { color: '#f0f2f5' }, ticks: { precision: 0 } },
+          x: { grid: { display: false } },
+        },
+      },
+    });
+  }
+
+  /**
+   * Renders a line / area chart for trend data.
+   * @param {string} canvasId
+   * @param {Object[]} data - [{ period, count }]
+   * @param {string} [label]
+   */
+  function line(canvasId, data, label = 'Hires') {
+    _destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    _instances[canvasId] = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: data.map(d => d.period),
+        datasets: [{
+          label,
+          data: data.map(d => d.count),
+          borderColor: PALETTE[0],
+          backgroundColor: 'rgba(0,120,212,0.08)',
+          borderWidth: 2,
+          pointRadius: 4,
+          pointBackgroundColor: PALETTE[0],
+          fill: true,
+          tension: 0.35,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { grid: { color: '#f0f2f5' }, ticks: { precision: 0 } },
+          x: { grid: { display: false } },
+        },
+      },
+    });
+  }
+
+  /**
+   * Renders a stacked bar chart for expiry status summaries.
+   * @param {string} canvasId
+   * @param {Object[]} data - [{ status, count }]
+   */
+  function expiryStatus(canvasId, data) {
+    _destroy(canvasId);
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+
+    _instances[canvasId] = new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: data.map(d => d.status),
+        datasets: [{
+          data: data.map(d => d.count),
+          backgroundColor: data.map(d => EXPIRY_PALETTE[d.status] ?? PALETTE[10]),
+          borderRadius: 4,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { grid: { color: '#f0f2f5' }, ticks: { precision: 0 } },
+          x: { grid: { display: false } },
+        },
+      },
+    });
+  }
+
+  return { donut, horizontalBar, verticalBar, line, expiryStatus };
+})();
+
+
+/* --- js/api.js --- */
+/**
+ * @file api.js
+ * @description Client-side API bridge for google.script.run calls.
+ *              Provides: promise wrappers, caching layer, loading state management.
+ *              All frontend modules must call GAS through this module only.
+ */
+
+'use strict';
+
+const API = (() => {
+
+  // ────────────────────────────────────────────────────────────
+  //  CACHE STORE
+  // ────────────────────────────────────────────────────────────
+  const _cache = {};
+  const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+  function _cacheGet(key) {
+    const entry = _cache[key];
+    if (!entry) return null;
+    if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+      delete _cache[key];
+      return null;
+    }
+    return entry.data;
+  }
+
+  function _cacheSet(key, data) {
+    _cache[key] = { data, timestamp: Date.now() };
+  }
+
+  function invalidateCache(key) {
+    if (key) delete _cache[key];
+    else Object.keys(_cache).forEach(k => delete _cache[k]);
+  }
+
+  // ────────────────────────────────────────────────────────────
+  //  GAS CALL WRAPPER
+  // ────────────────────────────────────────────────────────────
+
+  /**
+   * Wraps a google.script.run call in a Promise.
+   * Handles success/failure handlers and response envelope validation.
+   * @param {string} fnName - GAS function name
+   * @param {...*} args - Arguments to pass
+   * @returns {Promise<*>} Resolves with response.data or rejects with Error
+   */
+  function _call(fnName, ...args) {
+    return new Promise((resolve, reject) => {
+      let runner = google.script.run
+        .withSuccessHandler(response => {
+          if (!response || response.status !== 'success') {
+            reject(new Error(response?.message || `${fnName} returned an error.`));
+            return;
+          }
+          resolve(response.data);
+        })
+        .withFailureHandler(err => {
+          console.error(`[API] ${fnName} failed:`, err);
+          reject(new Error(err.message || `${fnName} call failed.`));
+        });
+
+      runner[fnName](...args);
+    });
+  }
+
+  // ────────────────────────────────────────────────────────────
+  //  PUBLIC API METHODS
+  // ────────────────────────────────────────────────────────────
+
+  async function getAllEmployees(forceRefresh = false) {
+    const CACHE_KEY = 'employees';
+    if (!forceRefresh) {
+      const cached = _cacheGet(CACHE_KEY);
+      if (cached) return cached;
+    }
+    const data = await _call('api_getAllEmployees');
+    _cacheSet(CACHE_KEY, data);
+    return data;
+  }
+
+  async function getEmployeeByCode(code) {
+    return _call('api_getEmployeeByCode', code);
+  }
+
+  async function getLookupData(forceRefresh = false) {
+    const CACHE_KEY = 'lookups';
+    if (!forceRefresh) {
+      const cached = _cacheGet(CACHE_KEY);
+      if (cached) return cached;
+    }
+    const data = await _call('api_getLookupData');
+    _cacheSet(CACHE_KEY, data);
+    return data;
+  }
+
+  async function getDocumentCenterData(forceRefresh = false) {
+    const CACHE_KEY = 'documents';
+    if (!forceRefresh) {
+      const cached = _cacheGet(CACHE_KEY);
+      if (cached) return cached;
+    }
+    const data = await _call('api_getDocumentCenterData');
+    _cacheSet(CACHE_KEY, data);
+    return data;
+  }
+
+  async function getInsightsData(forceRefresh = false) {
+    const CACHE_KEY = 'insights';
+    if (!forceRefresh) {
+      const cached = _cacheGet(CACHE_KEY);
+      if (cached) return cached;
+    }
+    const data = await _call('api_getInsightsData');
+    _cacheSet(CACHE_KEY, data);
+    return data;
+  }
+
+  async function getAllSettings(forceRefresh = false) {
+    const CACHE_KEY = 'settings';
+    if (!forceRefresh) {
+      const cached = _cacheGet(CACHE_KEY);
+      if (cached) return cached;
+    }
+    const data = await _call('api_getAllSettings');
+    _cacheSet(CACHE_KEY, data);
+    return data;
+  }
+
+  async function updateSetting(key, value) {
+    const result = await _call('api_updateSetting', key, value);
+    invalidateCache('settings');
+    return result;
+  }
+
+  async function bulkUpdateSettings(settingsMap) {
+    const result = await _call('api_bulkUpdateSettings', settingsMap);
+    invalidateCache('settings');
+    return result;
+  }
+
+  // ────────────────────────────────────────────────────────────
+  //  PUBLIC API
+  // ────────────────────────────────────────────────────────────
+
+  return {
+    getAllEmployees,
+    getEmployeeByCode,
+    getLookupData,
+    getDocumentCenterData,
+    getInsightsData,
+    getAllSettings,
+    updateSetting,
+    bulkUpdateSettings,
+    invalidateCache,
+  };
+})();
+
+
+/* --- js/modules/dashboard.js --- */
+/**
+ * @file dashboard.js
+ * @description Dashboard module — renders KPI cards and document expiry sections.
+ *              Data is provided from the shared app state (AppState.employees + AppState.documents).
+ */
+
+'use strict';
+
+const DashboardModule = (() => {
+
+  function render(employees, docData) {
+    const container = document.getElementById('dashboardContent');
+    if (!container) return;
+
+    const { summary, documents } = docData;
+
+    // ── KPI Cards ────────────────────────────────────────────
+    const totalEmp  = employees.length;
+    const activeProjects = new Set(employees.map(e => e.project).filter(Boolean)).size;
+    const expiredDocs    = summary.expired;
+    const criticalDocs   = documents.filter(d => d.status === 'Critical').length;
+
+    const kpiHtml = `
+      <div class="kpi-grid" role="list">
+        ${_kpiCard('Total Employees', totalEmp, '👥', 'primary', 'All active employees')}
+        ${_kpiCard('Active Projects', activeProjects, '🏗️', 'info', 'Distinct project sites')}
+        ${_kpiCard('Expired Documents', expiredDocs, '🔴', 'danger', 'Documents already expired')}
+        ${_kpiCard('Critical (≤30 days)', criticalDocs, '⚠️', 'warning', 'Expiring within 30 days')}
+        ${_kpiCard('Expiring This Month', summary.thisMonth, '📅', 'warning', 'Expiring within 30 days')}
+        ${_kpiCard('Expiring This Week', summary.thisWeek, '⏳', 'danger', 'Expiring within 7 days')}
+      </div>
+    `;
+
+    // ── Document Expiry Summary Cards ────────────────────────
+    const expiryHtml = `
+      <div class="card mb-6">
+        <div class="card__header">
+          <div class="card__title"><span class="card__title-icon">📁</span> Document Expiry Alerts</div>
+        </div>
+        <div class="expiry-summary-grid">
+          ${_expiryCard('🔴', 'Expired', summary.expired, 'expiry-card--expired')}
+          ${_expiryCard('🔥', 'Today', summary.today, 'expiry-card--today')}
+          ${_expiryCard('☀️', 'Tomorrow', summary.tomorrow, 'expiry-card--tomorrow')}
+          ${_expiryCard('📆', 'This Week', summary.thisWeek, 'expiry-card--week')}
+          ${_expiryCard('🗓️', 'Next Week', summary.nextWeek, 'expiry-card--week')}
+          ${_expiryCard('🗒️', 'This Month', summary.thisMonth, 'expiry-card--month')}
+          ${_expiryCard('📅', 'This Year', summary.thisYear, 'expiry-card--year')}
+        </div>
+      </div>
+    `;
+
+    // ── Recent Critical Documents Table ──────────────────────
+    const critical = documents
+      .filter(d => ['Critical', 'Expired'].includes(d.status))
+      .slice(0, 10);
+
+    const criticalRows = critical.map(doc => `
+      <tr>
+        <td><span class="font-bold">${_esc(doc.employeeCode)}</span></td>
+        <td>${_esc(doc.employeeName)}</td>
+        <td>${_esc(doc.docType)}</td>
+        <td>${_esc(doc.department)}</td>
+        <td>${_esc(doc.project)}</td>
+        <td>${_esc(doc.expiryDate ? new Date(doc.expiryDate).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'}) : '—')}</td>
+        <td><span class="badge badge--${_statusClass(doc.status)}">${_esc(doc.status)}</span></td>
+      </tr>
+    `).join('');
+
+    const criticalTableHtml = `
+      <div class="card">
+        <div class="card__header">
+          <div class="card__title"><span class="card__title-icon">🚨</span> Critical & Expired Documents</div>
+          <button class="btn btn--ghost btn--sm" onclick="AppRouter.navigate('documents')">View All →</button>
+        </div>
+        ${critical.length === 0
+          ? `<div class="empty-state"><div class="empty-state__icon">✅</div><div class="empty-state__title">All clear!</div><div class="empty-state__message">No critical or expired documents.</div></div>`
+          : `<div style="overflow-x:auto;"><table class="data-table">
+              <thead><tr>
+                <th>Code</th><th>Name</th><th>Document</th><th>Department</th><th>Project</th><th>Expiry Date</th><th>Status</th>
+              </tr></thead>
+              <tbody>${criticalRows}</tbody>
+            </table></div>`
+        }
+      </div>
+    `;
+
+    container.innerHTML = kpiHtml + expiryHtml + criticalTableHtml;
+  }
+
+  // ── Private Helpers ────────────────────────────────────────
+
+  function _kpiCard(label, value, icon, variant, footer) {
+    return `
+      <div class="kpi-card kpi-card--${variant}" role="listitem" tabindex="0">
+        <div class="kpi-card__header">
+          <span class="kpi-card__label">${_esc(label)}</span>
+          <div class="kpi-card__icon" aria-hidden="true">${icon}</div>
+        </div>
+        <div class="kpi-card__value">${value}</div>
+        <div class="kpi-card__footer">${_esc(footer)}</div>
+      </div>
+    `;
+  }
+
+  function _expiryCard(icon, label, count, cssClass) {
+    return `
+      <div class="expiry-card ${cssClass}" tabindex="0" role="button" aria-label="${_esc(label)}: ${count} documents">
+        <div class="expiry-card__icon" aria-hidden="true">${icon}</div>
+        <div class="expiry-card__count">${count}</div>
+        <div class="expiry-card__label">${_esc(label)}</div>
+      </div>
+    `;
+  }
+
+  function _statusClass(status) {
+    const map = { 'Valid':'valid', 'Due Soon':'due-soon', 'Critical':'critical', 'Expired':'expired', 'Missing':'missing' };
+    return map[status] ?? 'neutral';
+  }
+
+  function _esc(str) {
+    return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  return { render };
+})();
+
+
+/* --- js/modules/employees.js --- */
+/**
+ * @file employees.js
+ * @description Employees module — renders the employee directory table
+ *              with filtering, sorting, and profile drawer integration.
+ */
+
+'use strict';
+
+const EmployeesModule = (() => {
+
+  let _table = null;
+  let _lookups = {};
+
+  async function render(employees) {
+    const container = document.getElementById('employeesContent');
+    const actionsEl = document.getElementById('employeesHeaderActions');
+    if (!container) return;
+
+    // Load lookups for filters (cached)
+    try {
+      _lookups = await API.getLookupData();
+    } catch (e) {
+      console.warn('[EmployeesModule] Lookups not loaded:', e);
+    }
+
+    // Build table container
+    container.innerHTML = `<div id="employeesTableContainer"></div>`;
+
+    // Create DataTable
+    _table = DataTable.create({
+      containerId: 'employeesTableContainer',
+      searchFields: ['code', 'name', 'nameAr', 'department', 'project', 'title', 'section', 'nationality'],
+      columns: [
+        {
+          key: '_avatar',
+          label: '',
+          sortable: false,
+          render: (_, row) => `
+            <div class="employee-info">
+              <div class="employee-avatar" aria-hidden="true">${_initials(row.name)}</div>
+              <div>
+                <div class="employee-name">${_esc(row.name)}</div>
+                <div class="employee-code">${_esc(row.code)}</div>
+              </div>
+            </div>
+          `,
+        },
+        { key: 'title',      label: 'Job Title' },
+        { key: 'department', label: 'Department' },
+        { key: 'project',    label: 'Project' },
+        { key: 'nationality',label: 'Nationality' },
+        {
+          key: 'passportStatus',
+          label: 'Passport',
+          render: val => `<span class="badge badge--${_statusClass(val)}">${_esc(val || '—')}</span>`,
+        },
+        {
+          key: 'civilStatus',
+          label: 'Civil ID',
+          render: val => `<span class="badge badge--${_statusClass(val)}">${_esc(val || '—')}</span>`,
+        },
+        {
+          key: 'contractStatus',
+          label: 'Contract',
+          render: val => `<span class="badge badge--${_statusClass(val)}">${_esc(val || '—')}</span>`,
+        },
+        {
+          key: '_actions',
+          label: 'Actions',
+          sortable: false,
+          render: (_, row) => `
+            <button class="btn btn--secondary btn--sm" data-action="view" data-code="${_esc(row.code)}" aria-label="View profile of ${_esc(row.name)}">
+              View
+            </button>
+          `,
+        },
+      ],
+      data: employees,
+      pageSize: 25,
+      onRowAction: (action, row) => {
+        if (action === 'view') _openProfile(row.code);
+      },
+      emptyMessage: 'No employees found matching your search.',
+    });
+
+    // ── Extra Filters (Department, Project) ────────────────
+    const filtersContainer = _table.getExtraFiltersContainer();
+    if (filtersContainer && _lookups) {
+      filtersContainer.innerHTML = `
+        ${_select('filterDept',  'All Departments', _lookups.departments ?? [])}
+        ${_select('filterProj',  'All Projects',    _lookups.projects ?? [])}
+        ${_select('filterClass', 'All Classes',     _lookups.classes ?? [])}
+      `;
+      ['filterDept', 'filterProj', 'filterClass'].forEach(id => {
+        document.getElementById(id)?.addEventListener('change', _applyFilters);
+      });
+    }
+  }
+
+  // ── Profile Opener ─────────────────────────────────────────
+
+  async function _openProfile(code) {
+    try {
+      const emp = await API.getEmployeeByCode(code);
+      if (emp) Drawer.open(emp);
+    } catch (e) {
+      Toast.show('Error', 'Could not load employee profile.', 'error');
+    }
+  }
+
+  // ── Filter Handler ─────────────────────────────────────────
+
+  function _applyFilters() {
+    const dept  = document.getElementById('filterDept')?.value;
+    const proj  = document.getElementById('filterProj')?.value;
+    const cls   = document.getElementById('filterClass')?.value;
+
+    _table?.applyFilter(emp => {
+      return (!dept || emp.department === dept)
+          && (!proj || emp.project === proj)
+          && (!cls  || emp.class === cls);
+    });
+  }
+
+  // ── Helpers ────────────────────────────────────────────────
+
+  function _select(id, placeholder, options) {
+    const opts = options.map(o => `<option value="${_esc(o)}">${_esc(o)}</option>`).join('');
+    return `
+      <select class="filter-select" id="${id}" aria-label="${_esc(placeholder)}">
+        <option value="">${_esc(placeholder)}</option>
+        ${opts}
+      </select>
+    `;
+  }
+
+  function _initials(name) {
+    return (name || '?').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase();
+  }
+
+  function _statusClass(status) {
+    const m = { 'Valid':'valid','Due Soon':'due-soon','Critical':'critical','Expired':'expired','Missing':'missing' };
+    return m[status] ?? 'neutral';
+  }
+
+  function _esc(str) {
+    return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  return { render };
+})();
+
+
+/* --- js/modules/documentCenter.js --- */
+/**
+ * @file documentCenter.js
+ * @description Document Center module — renders expiry summary cards
+ *              and a filterable, sortable document expiry table.
+ */
+
+'use strict';
+
+const DocumentCenterModule = (() => {
+
+  let _table = null;
+  let _allDocs = [];
+
+  function render(docData) {
+    const container = document.getElementById('documentsContent');
+    if (!container) return;
+
+    const { summary, documents } = docData;
+    _allDocs = documents;
+
+    // ── Summary Cards ─────────────────────────────────────────
+    const summaryHtml = `
+      <div class="expiry-summary-grid mb-6">
+        ${_card('🔴', 'Expired',    summary.expired,   'expiry-card--expired',  'expired')}
+        ${_card('🔥', 'Today',      summary.today,     'expiry-card--today',    'today')}
+        ${_card('☀️', 'Tomorrow',   summary.tomorrow,  'expiry-card--tomorrow', 'tomorrow')}
+        ${_card('📆', 'This Week',  summary.thisWeek,  'expiry-card--week',     'week')}
+        ${_card('🗓️', 'Next Week',  summary.nextWeek,  'expiry-card--week',     'nextweek')}
+        ${_card('🗒️', 'This Month', summary.thisMonth, 'expiry-card--month',    'month')}
+        ${_card('📅', 'This Year',  summary.thisYear,  'expiry-card--year',     'year')}
+      </div>
+    `;
+
+    container.innerHTML = summaryHtml + `<div id="docTableContainer"></div>`;
+
+    // ── Expiry Card Click Filters ─────────────────────────────
+    container.querySelectorAll('.expiry-card[data-filter]').forEach(card => {
+      card.addEventListener('click', () => _filterByTimeframe(card.dataset.filter));
+    });
+
+    // ── Documents Table ───────────────────────────────────────
+    _table = DataTable.create({
+      containerId: 'docTableContainer',
+      searchFields: ['employeeCode', 'employeeName', 'department', 'project', 'docType'],
+      columns: [
+        { key: 'employeeCode', label: 'Code' },
+        { key: 'employeeName', label: 'Employee Name' },
+        { key: 'docType',      label: 'Document Type' },
+        { key: 'department',   label: 'Department' },
+        { key: 'project',      label: 'Project' },
+        {
+          key: 'expiryDate',
+          label: 'Expiry Date',
+          render: val => val ? new Date(val).toLocaleDateString('en-GB', {day:'2-digit',month:'short',year:'numeric'}) : '—',
+        },
+        {
+          key: 'daysLeft',
+          label: 'Days Left',
+          render: val => {
+            if (val === null || val === undefined) return '—';
+            const n = Number(val);
+            const color = n < 0 ? 'var(--color-expired)' : n <= 30 ? 'var(--color-critical)' : n <= 90 ? 'var(--color-warning)' : 'var(--color-valid)';
+            return `<span style="font-weight:700;color:${color}">${n < 0 ? 'Expired ' + Math.abs(n) + 'd ago' : n + ' days'}</span>`;
+          },
+        },
+        {
+          key: 'status',
+          label: 'Status',
+          render: val => `<span class="badge badge--${_statusClass(val)}">${_esc(val || '—')}</span>`,
+        },
+      ],
+      data: documents,
+      pageSize: 25,
+      emptyMessage: 'No documents found for the selected filter.',
+    });
+
+    // ── Type Filter ────────────────────────────────────────────
+    const extraFilters = _table.getExtraFiltersContainer();
+    if (extraFilters) {
+      extraFilters.innerHTML = `
+        <select class="filter-select" id="docTypeFilter" aria-label="Filter by document type">
+          <option value="">All Document Types</option>
+          <option value="Passport">Passport</option>
+          <option value="Civil / Resident ID">Civil / Resident ID</option>
+          <option value="Contract">Contract</option>
+        </select>
+        <select class="filter-select" id="docStatusFilter" aria-label="Filter by status">
+          <option value="">All Statuses</option>
+          <option value="Expired">Expired</option>
+          <option value="Critical">Critical</option>
+          <option value="Due Soon">Due Soon</option>
+          <option value="Valid">Valid</option>
+          <option value="Missing">Missing</option>
+        </select>
+      `;
+      document.getElementById('docTypeFilter')?.addEventListener('change', _applyFilters);
+      document.getElementById('docStatusFilter')?.addEventListener('change', _applyFilters);
+    }
+  }
+
+  // ── Filter Handlers ────────────────────────────────────────
+
+  function _applyFilters() {
+    const type   = document.getElementById('docTypeFilter')?.value;
+    const status = document.getElementById('docStatusFilter')?.value;
+    _table?.applyFilter(doc =>
+      (!type   || doc.docType === type)
+      && (!status || doc.status === status)
+    );
+  }
+
+  function _filterByTimeframe(filter) {
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    _table?.applyFilter(doc => {
+      const days = doc.daysLeft;
+      if (filter === 'expired')  return days !== null && days < 0;
+      if (filter === 'today')    return days === 0;
+      if (filter === 'tomorrow') return days === 1;
+      if (filter === 'week')     return days !== null && days >= 0 && days <= 7;
+      if (filter === 'nextweek') return days !== null && days >= 8 && days <= 14;
+      if (filter === 'month')    return days !== null && days >= 0 && days <= 30;
+      if (filter === 'year')     return days !== null && days >= 0 && days <= 365;
+      return true;
+    });
+  }
+
+  // ── Helpers ────────────────────────────────────────────────
+
+  function _card(icon, label, count, cssClass, filterKey) {
+    return `
+      <div class="expiry-card ${cssClass}" data-filter="${filterKey}" tabindex="0" role="button"
+           aria-label="Filter: ${_esc(label)}, ${count} documents">
+        <div class="expiry-card__icon" aria-hidden="true">${icon}</div>
+        <div class="expiry-card__count">${count}</div>
+        <div class="expiry-card__label">${_esc(label)}</div>
+      </div>
+    `;
+  }
+
+  function _statusClass(status) {
+    const m = { 'Valid':'valid','Due Soon':'due-soon','Critical':'critical','Expired':'expired','Missing':'missing' };
+    return m[status] ?? 'neutral';
+  }
+
+  function _esc(str) {
+    return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  return { render };
+})();
+
+
+/* --- js/modules/insights.js --- */
+/**
+ * @file insights.js
+ * @description HR Insights module — executive analytics dashboard
+ *              with Chart.js visualizations.
+ */
+
+'use strict';
+
+const InsightsModule = (() => {
+
+  function render(data) {
+    const container = document.getElementById('insightsContent');
+    if (!container) return;
+
+    // Update generated timestamp
+    const tsEl = document.getElementById('insightsGeneratedAt');
+    if (tsEl && data.generatedAt) {
+      tsEl.textContent = `Generated: ${new Date(data.generatedAt).toLocaleString('en-GB')}`;
+    }
+
+    container.innerHTML = `
+
+      <!-- Top KPIs -->
+      <div class="kpi-grid mb-6" role="list">
+        ${_kpi('👥', 'Total Employees',  data.kpis.totalEmployees, 'primary')}
+        ${_kpi('📊', 'Average Age',      data.kpis.averageAge + ' yrs', 'info')}
+        ${_kpi('👨', 'Male',            data.kpis.maleCount, 'primary')}
+        ${_kpi('👩', 'Female',          data.kpis.femaleCount, 'success')}
+        ${_kpi('🔧', 'Direct',          data.kpis.directCount, 'warning')}
+        ${_kpi('💼', 'Indirect',        data.kpis.indirectCount, 'info')}
+      </div>
+
+      <!-- Row 1: Department & Project Distribution -->
+      <div class="charts-grid charts-grid--2col mb-6">
+        ${_chartCard('chart-dept',    'Employees by Department', 'Department breakdown', 220)}
+        ${_chartCard('chart-project', 'Employees by Project',    'Project / site allocation', 220)}
+      </div>
+
+      <!-- Row 2: Nationality & Gender -->
+      <div class="charts-grid charts-grid--2col mb-6">
+        ${_chartCard('chart-nationality', 'Employees by Nationality', 'Nationality distribution', 240)}
+        ${_chartCard('chart-gender',      'Gender Breakdown',          'Male vs Female', 240)}
+      </div>
+
+      <!-- Row 3: Job Title & Classification -->
+      <div class="charts-grid charts-grid--2col mb-6">
+        ${_chartCard('chart-title', 'Employees by Job Title', 'Top job titles', 260)}
+        ${_chartCard('chart-class', 'Employment Classification', 'Engineering vs Other', 260)}
+      </div>
+
+      <!-- Row 4: Hiring Trend & Age Distribution -->
+      <div class="charts-grid charts-grid--2col mb-6">
+        ${_chartCard('chart-hiring', 'Hiring Trend', 'Hires by month', 240)}
+        ${_chartCard('chart-age',    'Age Distribution', 'Headcount by age group', 240)}
+      </div>
+
+      <!-- Row 5: Expiry Status -->
+      <div class="charts-grid charts-grid--3col mb-6">
+        ${_chartCard('chart-passport-expiry',  'Passport Expiry Status',  'Current passport validity', 220)}
+        ${_chartCard('chart-civil-expiry',     'Civil ID Expiry Status',  'Current civil ID validity', 220)}
+        ${_chartCard('chart-contract-expiry',  'Contract Expiry Status',  'Current contract validity', 220)}
+      </div>
+
+    `;
+
+    // ── Render Charts ──────────────────────────────────────
+    Charts.horizontalBar('chart-dept',    data.byDepartment);
+    Charts.horizontalBar('chart-project', data.byProject);
+    Charts.donut('chart-nationality', data.byNationality);
+    Charts.donut('chart-gender',      data.byGender);
+    Charts.horizontalBar('chart-title', data.byTitle);
+    Charts.donut('chart-class',       data.byClass);
+    Charts.line('chart-hiring',       data.hiringTrend, 'New Hires');
+    Charts.verticalBar('chart-age',   data.ageDistribution.map(d => ({ label: d.range, count: d.count })));
+    Charts.expiryStatus('chart-passport-expiry',  data.passportExpiryStats);
+    Charts.expiryStatus('chart-civil-expiry',     data.civilExpiryStats);
+    Charts.expiryStatus('chart-contract-expiry',  data.contractExpiryStats);
+  }
+
+  // ── Helpers ────────────────────────────────────────────────
+
+  function _kpi(icon, label, value, variant) {
+    return `
+      <div class="kpi-card kpi-card--${variant}" role="listitem">
+        <div class="kpi-card__header">
+          <span class="kpi-card__label">${_esc(label)}</span>
+          <div class="kpi-card__icon" aria-hidden="true">${icon}</div>
+        </div>
+        <div class="kpi-card__value">${value}</div>
+      </div>
+    `;
+  }
+
+  function _chartCard(canvasId, title, subtitle, height) {
+    return `
+      <div class="chart-card">
+        <div class="chart-card__header">
+          <div>
+            <div class="chart-card__title">${_esc(title)}</div>
+            <div class="chart-card__subtitle">${_esc(subtitle)}</div>
+          </div>
+        </div>
+        <div class="chart-canvas-wrapper" style="height:${height}px;">
+          <canvas id="${canvasId}" aria-label="${_esc(title)}" role="img"></canvas>
+        </div>
+      </div>
+    `;
+  }
+
+  function _esc(str) {
+    return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  return { render };
+})();
+
+
+/* --- js/modules/settings.js --- */
+/**
+ * @file settings.js
+ * @description Settings module — renders system configuration UI
+ *              and handles saving settings back to GAS via API.
+ */
+
+'use strict';
+
+const SettingsModule = (() => {
+
+  let _settings = {};
+
+  async function render() {
+    const container = document.getElementById('settingsContent');
+    if (!container) return;
+
+    try {
+      _settings = await API.getAllSettings();
+    } catch (e) {
+      Toast.show('Error', 'Could not load settings.', 'error');
+      return;
+    }
+
+    container.innerHTML = `
+      <div class="settings-layout">
+
+        <!-- Settings Navigation -->
+        <nav class="settings-nav" aria-label="Settings sections">
+          <div class="settings-nav__item settings-nav__item--active" data-section="expiry" tabindex="0">⏰ Expiry Rules</div>
+          <div class="settings-nav__item" data-section="table" tabindex="0">📋 Table Preferences</div>
+          <div class="settings-nav__item" data-section="system" tabindex="0">🖥️ System</div>
+        </nav>
+
+        <!-- Settings Panels -->
+        <div class="settings-panel" id="settingsPanelContainer">
+
+          <!-- Expiry Rules -->
+          <section class="settings-section" id="settings-section-expiry" aria-labelledby="expiry-section-heading">
+            <div class="settings-section__header">
+              <div class="settings-section__title" id="expiry-section-heading">⏰ Document Expiry Rules</div>
+              <div class="settings-section__desc">Define thresholds that control how document expiry statuses are classified.</div>
+            </div>
+            <div class="settings-section__body">
+              ${_settingRow(
+                'expiry.critical.days',
+                'Critical Threshold (days)',
+                'Documents expiring within this many days are marked as Critical.',
+                _settings['expiry.critical.days'] ?? '30',
+                'number'
+              )}
+              ${_settingRow(
+                'expiry.dueSoon.days',
+                'Due Soon Threshold (days)',
+                'Documents expiring within this many days are marked as Due Soon.',
+                _settings['expiry.dueSoon.days'] ?? '90',
+                'number'
+              )}
+            </div>
+          </section>
+
+          <!-- Table Preferences -->
+          <section class="settings-section" id="settings-section-table" aria-labelledby="table-section-heading">
+            <div class="settings-section__header">
+              <div class="settings-section__title" id="table-section-heading">📋 Table Preferences</div>
+              <div class="settings-section__desc">Configure default behavior of data tables across the application.</div>
+            </div>
+            <div class="settings-section__body">
+              ${_settingRow(
+                'table.defaultPageSize',
+                'Default Page Size',
+                'Number of rows displayed per page in all tables.',
+                _settings['table.defaultPageSize'] ?? '25',
+                'number'
+              )}
+              ${_settingRow(
+                'table.defaultSortField',
+                'Default Sort Field',
+                'Field used to sort the employee table on initial load.',
+                _settings['table.defaultSortField'] ?? 'name',
+                'text'
+              )}
+            </div>
+          </section>
+
+          <!-- System Settings -->
+          <section class="settings-section" id="settings-section-system" aria-labelledby="system-section-heading">
+            <div class="settings-section__header">
+              <div class="settings-section__title" id="system-section-heading">🖥️ System</div>
+              <div class="settings-section__desc">Core system configuration options.</div>
+            </div>
+            <div class="settings-section__body">
+              ${_settingRow(
+                'system.timezone',
+                'System Timezone',
+                'Timezone used for date calculations and reporting.',
+                _settings['system.timezone'] ?? 'Asia/Muscat',
+                'text'
+              )}
+            </div>
+          </section>
+
+          <!-- Save Button -->
+          <div style="display:flex;justify-content:flex-end;gap:var(--space-3);padding:var(--space-4) 0;">
+            <button class="btn btn--secondary" id="settingsResetBtn">Reset Defaults</button>
+            <button class="btn btn--primary" id="settingsSaveBtn">💾 Save All Settings</button>
+          </div>
+
+        </div>
+      </div>
+    `;
+
+    _bindEvents(container);
+  }
+
+  // ── Event Binding ──────────────────────────────────────────
+
+  function _bindEvents(container) {
+    // Section navigation
+    container.querySelectorAll('.settings-nav__item').forEach(item => {
+      item.addEventListener('click', () => {
+        container.querySelectorAll('.settings-nav__item').forEach(i => i.classList.remove('settings-nav__item--active'));
+        item.classList.add('settings-nav__item--active');
+        const section = item.dataset.section;
+        document.getElementById(`settings-section-${section}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+      item.addEventListener('keydown', e => { if (e.key === 'Enter') item.click(); });
+    });
+
+    // Save
+    document.getElementById('settingsSaveBtn')?.addEventListener('click', _saveAll);
+
+    // Reset
+    document.getElementById('settingsResetBtn')?.addEventListener('click', _confirmReset);
+  }
+
+  // ── Save / Reset ───────────────────────────────────────────
+
+  async function _saveAll() {
+    const inputs = document.querySelectorAll('[data-setting-key]');
+    const map = {};
+    inputs.forEach(input => {
+      map[input.dataset.settingKey] = input.value.trim();
+    });
+
+    const saveBtn = document.getElementById('settingsSaveBtn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+
+    try {
+      await API.bulkUpdateSettings(map);
+      Toast.show('Settings Saved', 'All settings have been saved successfully.', 'success');
+    } catch (e) {
+      Toast.show('Save Failed', e.message, 'error');
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = '💾 Save All Settings';
+    }
+  }
+
+  function _confirmReset() {
+    if (!confirm('Reset all settings to defaults? This cannot be undone.')) return;
+    const defaults = {
+      'expiry.critical.days': '30',
+      'expiry.dueSoon.days': '90',
+      'table.defaultPageSize': '25',
+      'table.defaultSortField': 'name',
+      'system.timezone': 'Asia/Muscat',
+    };
+    document.querySelectorAll('[data-setting-key]').forEach(input => {
+      const key = input.dataset.settingKey;
+      if (defaults[key]) input.value = defaults[key];
+    });
+    Toast.show('Defaults Restored', 'Click Save to apply.', 'info');
+  }
+
+  // ── UI Builders ────────────────────────────────────────────
+
+  function _settingRow(key, label, desc, currentValue, type = 'text') {
+    return `
+      <div class="setting-row">
+        <div class="setting-row__info">
+          <div class="setting-row__label">${_esc(label)}</div>
+          <div class="setting-row__desc">${_esc(desc)}</div>
+        </div>
+        <div class="setting-row__control">
+          <input
+            type="${type}"
+            class="form-input"
+            style="width:140px;"
+            value="${_esc(currentValue)}"
+            data-setting-key="${_esc(key)}"
+            id="setting-${_esc(key.replace(/\./g, '-'))}"
+            aria-label="${_esc(label)}"
+            ${type === 'number' ? 'min="1" max="3650"' : ''}
+          >
+        </div>
+      </div>
+    `;
+  }
+
+  function _esc(str) {
+    return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  return { render };
+})();
+
+
+/* --- js/modules/search.js --- */
+/**
+ * @file search.js
+ * @description Global Search module — client-side instant search across
+ *              all employee fields using a pre-built search index.
+ */
+
+'use strict';
+
+const SearchModule = (() => {
+
+  let _index  = [];   // Flat searchable index
+  let _visible = false;
+
+  const SEARCH_FIELDS = [
+    'code', 'name', 'nameAr', 'email', 'telephone',
+    'passportNo', 'civilNo', 'department', 'section', 'project', 'title',
+  ];
+
+  const MAX_RESULTS = 8;
+
+  const inputEl   = document.getElementById('globalSearchInput');
+  const resultsEl = document.getElementById('globalSearchResults');
+
+  // ── Index Building ─────────────────────────────────────────
+
+  /**
+   * Builds the searchable index from the employee array.
+   * Call once when employees data is loaded.
+   * @param {Object[]} employees
+   */
+  function buildIndex(employees) {
+    _index = employees.map(emp => ({
+      emp,
+      searchText: SEARCH_FIELDS
+        .map(f => String(emp[f] ?? '').toLowerCase())
+        .join(' '),
+    }));
+  }
+
+  // ── Search Logic ───────────────────────────────────────────
+
+  function _search(query) {
+    if (!query || query.trim().length < 2) return [];
+    const terms = query.toLowerCase().trim().split(/\s+/);
+    return _index
+      .filter(({ searchText }) => terms.every(t => searchText.includes(t)))
+      .slice(0, MAX_RESULTS)
+      .map(({ emp }) => emp);
+  }
+
+  // ── Results Rendering ──────────────────────────────────────
+
+  function _renderResults(results, query) {
+    if (results.length === 0) {
+      resultsEl.innerHTML = `
+        <div class="search-result-item" style="cursor:default;color:var(--color-text-muted);">
+          <span>No employees found for "<strong>${_esc(query)}</strong>"</span>
+        </div>
+      `;
+    } else {
+      resultsEl.innerHTML = results.map(emp => `
+        <div class="search-result-item" data-code="${_esc(emp.code)}" tabindex="0" role="option" aria-label="${_esc(emp.name)}">
+          <span class="search-result-item__code">${_esc(emp.code)}</span>
+          <div>
+            <div class="search-result-item__name">${_esc(emp.name)}</div>
+            <div class="search-result-item__meta">${_esc(emp.title || '')} · ${_esc(emp.department || '')} · ${_esc(emp.project || '')}</div>
+          </div>
+        </div>
+      `).join('');
+
+      // Result click listeners
+      resultsEl.querySelectorAll('.search-result-item[data-code]').forEach(item => {
+        item.addEventListener('click',   () => _selectResult(item.dataset.code));
+        item.addEventListener('keydown', e => { if (e.key === 'Enter') _selectResult(item.dataset.code); });
+      });
+    }
+    _show();
+  }
+
+  async function _selectResult(code) {
+    _hide();
+    inputEl.value = '';
+    // Navigate to Employees page and open drawer
+    AppRouter.navigate('employees');
+    await new Promise(r => setTimeout(r, 100)); // allow page switch
+    try {
+      const emp = await API.getEmployeeByCode(code);
+      if (emp) Drawer.open(emp);
+    } catch (e) {
+      Toast.show('Error', 'Could not load employee profile.', 'error');
+    }
+  }
+
+  // ── Show / Hide ────────────────────────────────────────────
+
+  function _show() {
+    resultsEl.classList.add('global-search__results--visible');
+    inputEl.setAttribute('aria-expanded', 'true');
+    _visible = true;
+  }
+
+  function _hide() {
+    resultsEl.classList.remove('global-search__results--visible');
+    inputEl.setAttribute('aria-expanded', 'false');
+    _visible = false;
+  }
+
+  // ── Event Listeners ────────────────────────────────────────
+
+  let _debounce;
+
+  inputEl?.addEventListener('input', () => {
+    clearTimeout(_debounce);
+    const query = inputEl.value.trim();
+    if (!query || query.length < 2) { _hide(); return; }
+    _debounce = setTimeout(() => {
+      const results = _search(query);
+      _renderResults(results, query);
+    }, 150);
+  });
+
+  inputEl?.addEventListener('keydown', e => {
+    if (e.key === 'Escape') { _hide(); inputEl.blur(); }
+  });
+
+  document.addEventListener('click', e => {
+    if (_visible && !e.target.closest('.global-search')) _hide();
+  });
+
+  // Ctrl+K shortcut
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+      e.preventDefault();
+      inputEl?.focus();
+      inputEl?.select();
+    }
+  });
+
+  function _esc(str) {
+    return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  return { buildIndex };
+})();
+
+
+/* --- js/app.js --- */
+/**
+ * @file app.js
+ * @description Application bootstrap, SPA router, and shared state manager.
+ *              This is the last script loaded and the entry point for execution.
+ *
+ *  Responsibilities:
+ *  1. Initialize the app on DOMContentLoaded.
+ *  2. Load initial data from GAS (employees, documents, settings).
+ *  3. Build the global search index.
+ *  4. Route page navigation requests.
+ *  5. Manage the collapsible sidebar.
+ */
+
+'use strict';
+
+// ═══════════════════════════════════════════════════════════════
+//  APP STATE  (shared in-memory data store)
+// ═══════════════════════════════════════════════════════════════
+
+const AppState = {
+  employees:   [],
+  documents:   null,
+  insights:    null,
+  settings:    {},
+  currentPage: 'dashboard',
+};
+
+// ═══════════════════════════════════════════════════════════════
+//  ROUTER
+// ═══════════════════════════════════════════════════════════════
+
+const PAGE_TITLES = {
+  dashboard: 'Dashboard',
+  insights:  'HR Insights',
+  employees: 'Employees',
+  documents: 'Document Center',
+  settings:  'Settings',
+};
+
+const AppRouter = (() => {
+
+  const _pageModuleMap = {
+    dashboard: () => {
+      if (AppState.employees.length && AppState.documents) {
+        DashboardModule.render(AppState.employees, AppState.documents);
+      }
+    },
+    insights: async () => {
+      if (!AppState.insights) {
+        _showPageLoading('insightsContent');
+        try {
+          AppState.insights = await API.getInsightsData();
+        } catch (e) {
+          Toast.show('Error', 'Could not load HR Insights data.', 'error');
+          return;
+        }
+      }
+      InsightsModule.render(AppState.insights);
+    },
+    employees: async () => {
+      if (AppState.employees.length) {
+        await EmployeesModule.render(AppState.employees);
+      }
+    },
+    documents: async () => {
+      if (!AppState.documents) {
+        _showPageLoading('documentsContent');
+        try {
+          AppState.documents = await API.getDocumentCenterData();
+        } catch (e) {
+          Toast.show('Error', 'Could not load Document Center data.', 'error');
+          return;
+        }
+      }
+      DocumentCenterModule.render(AppState.documents);
+    },
+    settings: () => SettingsModule.render(),
+  };
+
+  /**
+   * Navigates to a page by key.
+   * @param {string} page
+   */
+  async function navigate(page) {
+    if (!PAGE_TITLES[page]) return;
+
+    // Deactivate current page
+    document.getElementById(`page-${AppState.currentPage}`)?.classList.remove('page-view--active');
+
+    // Update active nav item
+    document.querySelectorAll('.sidebar__nav-item').forEach(item => {
+      const isActive = item.dataset.page === page;
+      item.classList.toggle('sidebar__nav-item--active', isActive);
+      item.setAttribute('aria-current', isActive ? 'page' : 'false');
+    });
+
+    // Update header title
+    const titleEl = document.getElementById('headerPageTitle');
+    if (titleEl) titleEl.textContent = PAGE_TITLES[page];
+
+    // Activate page
+    AppState.currentPage = page;
+    document.getElementById(`page-${page}`)?.classList.add('page-view--active');
+
+    // Render module
+    const moduleFn = _pageModuleMap[page];
+    if (moduleFn) await moduleFn();
+
+    // Mobile: close sidebar after navigation
+    if (window.innerWidth <= 768) {
+      document.querySelector('.sidebar')?.classList.remove('sidebar--mobile-open');
+    }
+  }
+
+  function _showPageLoading(containerId) {
+    const el = document.getElementById(containerId);
+    if (el) el.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:center;padding:80px 0;gap:16px;color:var(--color-text-muted);">
+        <div class="app-loading__spinner" style="width:32px;height:32px;border-width:2px;"></div>
+        <span>Loading data…</span>
+      </div>
+    `;
+  }
+
+  return { navigate };
+})();
+
+// ═══════════════════════════════════════════════════════════════
+//  SIDEBAR TOGGLE
+// ═══════════════════════════════════════════════════════════════
+
+function _initSidebar() {
+  const shell   = document.getElementById('appShell');
+  const sidebar = document.getElementById('sidebar');
+  const toggleBtn = document.getElementById('sidebarToggle');
+
+  toggleBtn?.addEventListener('click', () => {
+    const isMobile = window.innerWidth <= 768;
+    if (isMobile) {
+      sidebar.classList.toggle('sidebar--mobile-open');
+    } else {
+      shell.classList.toggle('app-shell--collapsed');
+      sidebar.classList.toggle('sidebar--collapsed');
+      const isExpanded = !shell.classList.contains('app-shell--collapsed');
+      toggleBtn.setAttribute('aria-expanded', String(isExpanded));
+    }
+  });
+
+  // Sidebar nav click delegation
+  document.querySelector('.sidebar__nav')?.addEventListener('click', e => {
+    const item = e.target.closest('.sidebar__nav-item[data-page]');
+    if (item) AppRouter.navigate(item.dataset.page);
+  });
+
+  document.querySelector('.sidebar__nav')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      const item = e.target.closest('.sidebar__nav-item[data-page]');
+      if (item) AppRouter.navigate(item.dataset.page);
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  REFRESH BUTTON
+// ═══════════════════════════════════════════════════════════════
+
+function _initRefreshBtn() {
+  document.getElementById('refreshBtn')?.addEventListener('click', async () => {
+    API.invalidateCache();
+    AppState.employees = [];
+    AppState.documents = null;
+    AppState.insights  = null;
+    Toast.show('Refreshing', 'Reloading data from server…', 'info', 2000);
+    await _loadInitialData();
+    await AppRouter.navigate(AppState.currentPage);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  INITIAL DATA LOAD
+// ═══════════════════════════════════════════════════════════════
+
+async function _loadInitialData() {
+  try {
+    // Load employees and documents in parallel for faster startup
+    const [employees, documents] = await Promise.all([
+      API.getAllEmployees(),
+      API.getDocumentCenterData(),
+    ]);
+
+    AppState.employees = employees ?? [];
+    AppState.documents = documents ?? { summary: {}, documents: [] };
+
+    // Build global search index
+    SearchModule.buildIndex(AppState.employees);
+
+    // Update dashboard last-updated timestamp
+    const tsEl = document.getElementById('dashboardLastUpdated');
+    if (tsEl) tsEl.textContent = `Last updated: ${new Date().toLocaleTimeString('en-GB')}`;
+
+    return true;
+  } catch (e) {
+    console.error('[App] Initial data load failed:', e);
+    Toast.show('Load Error', 'Failed to load employee data. Check your spreadsheet connection.', 'error', 8000);
+    return false;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  BOOTSTRAP
+// ═══════════════════════════════════════════════════════════════
+
+async function _boot() {
+  _initSidebar();
+  _initRefreshBtn();
+
+  const loaded = await _loadInitialData();
+
+  // Hide loading screen
+  const loadingEl = document.getElementById('appLoading');
+  if (loadingEl) {
+    loadingEl.classList.add('app-loading--hidden');
+    setTimeout(() => loadingEl.remove(), 500);
+  }
+
+  // Show app shell
+  const shellEl = document.getElementById('appShell');
+  if (shellEl) shellEl.setAttribute('aria-hidden', 'false');
+
+  // Render initial page
+  if (loaded) {
+    await AppRouter.navigate('dashboard');
+  }
+}
+
+// ── Entry Point ────────────────────────────────────────────────
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', _boot);
+} else {
+  _boot();
+}
+
+
+</script>

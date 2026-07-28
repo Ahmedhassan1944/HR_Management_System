@@ -14,8 +14,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
   <!-- Design System CSS -->
-  <style><?!= include('Frontend/css/main') ?></style>
-  <style><?!= include('Frontend/css/components') ?></style>
+  <?!= include('Styles'); ?>
 </head>
 <body>
 
@@ -250,18 +249,6 @@
 <!-- ═══════════════════════════════════════════════════════════
      JAVASCRIPT MODULES (order matters)
 ═══════════════════════════════════════════════════════════════ -->
-<script><?!= include('Frontend/js/components/Toast') ?></script>
-<script><?!= include('Frontend/js/components/DataTable') ?></script>
-<script><?!= include('Frontend/js/components/Drawer') ?></script>
-<script><?!= include('Frontend/js/components/Charts') ?></script>
-<script><?!= include('Frontend/js/api') ?></script>
-<script><?!= include('Frontend/js/modules/dashboard') ?></script>
-<script><?!= include('Frontend/js/modules/employees') ?></script>
-<script><?!= include('Frontend/js/modules/documentCenter') ?></script>
-<script><?!= include('Frontend/js/modules/insights') ?></script>
-<script><?!= include('Frontend/js/modules/settings') ?></script>
-<script><?!= include('Frontend/js/modules/search') ?></script>
-<script><?!= include('Frontend/js/app') ?></script>
-
+  <?!= include('Script'); ?>
 </body>
 </html>

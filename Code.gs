@@ -22,7 +22,7 @@
  */
 function doGet() {
   return HtmlService
-    .createTemplateFromFile('Frontend/index')
+    .createTemplateFromFile('Index')
     .evaluate()
     .setTitle('HR Management Platform')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
@@ -31,7 +31,7 @@ function doGet() {
 
 /**
  * GAS HTML include helper — allows modular HTML/CSS/JS file includes.
- * Usage inside HTML: <?= include('Frontend/css/main') ?>
+ * Usage inside HTML: <?= include('Styles') ?>
  * @param {string} filename
  * @returns {string}
  */
