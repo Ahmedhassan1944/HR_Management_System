@@ -2164,4 +2164,40 @@ ul, ol { list-style: none; }
   }
 }
 
+/* ── Insights Layout ── */
+.insights-layout {
+  display: flex;
+  gap: var(--space-6);
+  align-items: flex-start;
+}
+
+.insights-layout__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.insights-layout__side {
+  width: 380px;
+  flex-shrink: 0;
+}
+
+.chart-card__scroll-area {
+  max-height: calc(100vh - 200px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0,0,0,0.1) transparent;
+}
+
+@media (max-width: 1024px) {
+  .insights-layout {
+    flex-direction: column;
+  }
+  .insights-layout__side {
+    width: 100%;
+  }
+  .chart-card__scroll-area {
+    max-height: 500px;
+  }
+}
+
 </style>

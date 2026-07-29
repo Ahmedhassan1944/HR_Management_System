@@ -1431,49 +1431,68 @@ const InsightsModule = (() => {
       tsEl.textContent = `Generated: ${new Date(data.generatedAt).toLocaleString('en-GB')}`;
     }
 
+    const titleHeight = Math.max(600, (data.byTitle?.length || 0) * 32);
+
     container.innerHTML = `
+      <div class="insights-layout">
+        <div class="insights-layout__main">
+          <!-- Top KPIs -->
+          <div class="kpi-grid mb-6" role="list">
+            ${_kpi('👥', 'Total Employees',  data.kpis.totalEmployees, 'primary')}
+            ${_kpi('📊', 'Average Age',      data.kpis.averageAge + ' yrs', 'info')}
+            ${_kpi('👨', 'Male',            data.kpis.maleCount, 'primary')}
+            ${_kpi('👩', 'Female',          data.kpis.femaleCount, 'success')}
+            ${_kpi('🔧', 'Direct',          data.kpis.directCount, 'warning')}
+            ${_kpi('💼', 'Indirect',        data.kpis.indirectCount, 'info')}
+          </div>
 
-      <!-- Top KPIs -->
-      <div class="kpi-grid mb-6" role="list">
-        ${_kpi('👥', 'Total Employees',  data.kpis.totalEmployees, 'primary')}
-        ${_kpi('📊', 'Average Age',      data.kpis.averageAge + ' yrs', 'info')}
-        ${_kpi('👨', 'Male',            data.kpis.maleCount, 'primary')}
-        ${_kpi('👩', 'Female',          data.kpis.femaleCount, 'success')}
-        ${_kpi('🔧', 'Direct',          data.kpis.directCount, 'warning')}
-        ${_kpi('💼', 'Indirect',        data.kpis.indirectCount, 'info')}
+          <!-- Row 1: Department & Project Distribution -->
+          <div class="charts-grid charts-grid--2col mb-6">
+            ${_chartCard('chart-dept',    'Employees by Department', 'Department breakdown', 220)}
+            ${_chartCard('chart-project', 'Employees by Project',    'Project / site allocation', 220)}
+          </div>
+
+          <!-- Row 2: Nationality & Gender -->
+          <div class="charts-grid charts-grid--2col mb-6">
+            ${_chartCard('chart-nationality', 'Employees by Nationality', 'Nationality distribution', 240)}
+            ${_chartCard('chart-gender',      'Gender Breakdown',          'Male vs Female', 240)}
+          </div>
+
+          <!-- Row 3: Classification -->
+          <div class="charts-grid mb-6">
+            ${_chartCard('chart-class', 'Employment Classification', 'Engineering vs Other', 260)}
+          </div>
+
+          <!-- Row 4: Hiring Trend & Age Distribution -->
+          <div class="charts-grid charts-grid--2col mb-6">
+            ${_chartCard('chart-hiring', 'Hiring Trend', 'Hires by month', 240)}
+            ${_chartCard('chart-age',    'Age Distribution', 'Headcount by age group', 240)}
+          </div>
+
+          <!-- Row 5: Expiry Status -->
+          <div class="charts-grid charts-grid--3col mb-6">
+            ${_chartCard('chart-passport-expiry',  'Passport Expiry Status',  'Current passport validity', 220)}
+            ${_chartCard('chart-civil-expiry',     'Civil ID Expiry Status',  'Current civil ID validity', 220)}
+            ${_chartCard('chart-contract-expiry',  'Contract Expiry Status',  'Current contract validity', 220)}
+          </div>
+        </div>
+
+        <div class="insights-layout__side">
+          <div class="chart-card h-100">
+            <div class="chart-card__header">
+              <div>
+                <div class="chart-card__title">Employees by Job Title</div>
+                <div class="chart-card__subtitle">Top job titles</div>
+              </div>
+            </div>
+            <div class="chart-card__scroll-area">
+              <div class="chart-canvas-wrapper" style="height:${titleHeight}px;">
+                <canvas id="chart-title" aria-label="Employees by Job Title" role="img"></canvas>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-
-      <!-- Row 1: Department & Project Distribution -->
-      <div class="charts-grid charts-grid--2col mb-6">
-        ${_chartCard('chart-dept',    'Employees by Department', 'Department breakdown', 220)}
-        ${_chartCard('chart-project', 'Employees by Project',    'Project / site allocation', 220)}
-      </div>
-
-      <!-- Row 2: Nationality & Gender -->
-      <div class="charts-grid charts-grid--2col mb-6">
-        ${_chartCard('chart-nationality', 'Employees by Nationality', 'Nationality distribution', 240)}
-        ${_chartCard('chart-gender',      'Gender Breakdown',          'Male vs Female', 240)}
-      </div>
-
-      <!-- Row 3: Job Title & Classification -->
-      <div class="charts-grid charts-grid--2col mb-6">
-        ${_chartCard('chart-title', 'Employees by Job Title', 'Top job titles', 260)}
-        ${_chartCard('chart-class', 'Employment Classification', 'Engineering vs Other', 260)}
-      </div>
-
-      <!-- Row 4: Hiring Trend & Age Distribution -->
-      <div class="charts-grid charts-grid--2col mb-6">
-        ${_chartCard('chart-hiring', 'Hiring Trend', 'Hires by month', 240)}
-        ${_chartCard('chart-age',    'Age Distribution', 'Headcount by age group', 240)}
-      </div>
-
-      <!-- Row 5: Expiry Status -->
-      <div class="charts-grid charts-grid--3col mb-6">
-        ${_chartCard('chart-passport-expiry',  'Passport Expiry Status',  'Current passport validity', 220)}
-        ${_chartCard('chart-civil-expiry',     'Civil ID Expiry Status',  'Current civil ID validity', 220)}
-        ${_chartCard('chart-contract-expiry',  'Contract Expiry Status',  'Current contract validity', 220)}
-      </div>
-
     `;
 
     // ── Render Charts ──────────────────────────────────────
