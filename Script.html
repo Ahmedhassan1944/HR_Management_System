@@ -607,8 +607,9 @@ const Charts = (() => {
    * @param {string} canvasId
    * @param {Object[]} data - [{ label, count }]
    * @param {string} [title]
+   * @param {Function} [onClickHandler] - callback(label)
    */
-  function donut(canvasId, data, title = '') {
+  function donut(canvasId, data, title = '', onClickHandler = null) {
     _destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -634,6 +635,13 @@ const Charts = (() => {
             label: ctx => ` ${ctx.label}: ${ctx.parsed} (${Math.round(ctx.parsed / ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0) * 100)}%)`
           }},
         },
+        onClick: (e, elements, chart) => {
+          if (onClickHandler && elements.length > 0) {
+            const index = elements[0].index;
+            const label = chart.data.labels[index];
+            if (label) onClickHandler(label);
+          }
+        },
       },
     });
   }
@@ -642,8 +650,9 @@ const Charts = (() => {
    * Renders a horizontal bar chart.
    * @param {string} canvasId
    * @param {Object[]} data - [{ label, count }]
+   * @param {Function} [onClickHandler] - callback(label)
    */
-  function horizontalBar(canvasId, data) {
+  function horizontalBar(canvasId, data, onClickHandler = null) {
     _destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -668,6 +677,13 @@ const Charts = (() => {
           x: { grid: { color: '#f0f2f5' }, ticks: { precision: 0 } },
           y: { grid: { display: false } },
         },
+        onClick: (e, elements, chart) => {
+          if (onClickHandler && elements.length > 0) {
+            const index = elements[0].index;
+            const label = chart.data.labels[index];
+            if (label) onClickHandler(label);
+          }
+        },
       },
     });
   }
@@ -676,8 +692,9 @@ const Charts = (() => {
    * Renders a vertical bar / column chart.
    * @param {string} canvasId
    * @param {Object[]} data - [{ label, count }]
+   * @param {Function} [onClickHandler] - callback(label)
    */
-  function verticalBar(canvasId, data) {
+  function verticalBar(canvasId, data, onClickHandler = null) {
     _destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -700,6 +717,13 @@ const Charts = (() => {
           y: { grid: { color: '#f0f2f5' }, ticks: { precision: 0 } },
           x: { grid: { display: false } },
         },
+        onClick: (e, elements, chart) => {
+          if (onClickHandler && elements.length > 0) {
+            const index = elements[0].index;
+            const label = chart.data.labels[index];
+            if (label) onClickHandler(label);
+          }
+        },
       },
     });
   }
@@ -709,8 +733,9 @@ const Charts = (() => {
    * @param {string} canvasId
    * @param {Object[]} data - [{ period, count }]
    * @param {string} [label]
+   * @param {Function} [onClickHandler] - callback(period)
    */
-  function line(canvasId, data, label = 'Hires') {
+  function line(canvasId, data, label = 'Hires', onClickHandler = null) {
     _destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -738,6 +763,13 @@ const Charts = (() => {
         scales: {
           y: { grid: { color: '#f0f2f5' }, ticks: { precision: 0 } },
           x: { grid: { display: false } },
+        },
+        onClick: (e, elements, chart) => {
+          if (onClickHandler && elements.length > 0) {
+            const index = elements[0].index;
+            const label = chart.data.labels[index];
+            if (label) onClickHandler(label);
+          }
         },
       },
     });
@@ -1445,14 +1477,22 @@ const InsightsModule = (() => {
     `;
 
     // ── Render Charts ──────────────────────────────────────
-    Charts.horizontalBar('chart-dept',    data.byDepartment);
-    Charts.horizontalBar('chart-project', data.byProject);
-    Charts.donut('chart-nationality', data.byNationality);
-    Charts.donut('chart-gender',      data.byGender);
-    Charts.horizontalBar('chart-title', data.byTitle);
-    Charts.donut('chart-class',       data.byClass);
-    Charts.line('chart-hiring',       data.hiringTrend, 'New Hires');
-    Charts.verticalBar('chart-age',   data.ageDistribution.map(d => ({ label: d.range, count: d.count })));
+    const crossFilter = (field) => {
+      return (label) => {
+        if (typeof FilterModule !== 'undefined' && FilterModule.setFilter) {
+          FilterModule.setFilter(field, label);
+        }
+      };
+    };
+
+    Charts.horizontalBar('chart-dept',    data.byDepartment, crossFilter('fp-dept'));
+    Charts.horizontalBar('chart-project', data.byProject,    crossFilter('fp-project'));
+    Charts.donut('chart-nationality',     data.byNationality, crossFilter('fp-nationality'));
+    Charts.donut('chart-gender',          data.byGender,      crossFilter('fp-gender'));
+    Charts.horizontalBar('chart-title',   data.byTitle,       crossFilter('fp-title'));
+    Charts.donut('chart-class',           data.byClass,       crossFilter('fp-class'));
+    Charts.line('chart-hiring',           data.hiringTrend, 'New Hires');
+    Charts.verticalBar('chart-age',       data.ageDistribution.map(d => ({ label: d.range, count: d.count })));
     Charts.expiryStatus('chart-passport-expiry',  data.passportExpiryStats);
     Charts.expiryStatus('chart-civil-expiry',     data.civilExpiryStats);
     Charts.expiryStatus('chart-contract-expiry',  data.contractExpiryStats);
@@ -2614,6 +2654,45 @@ const FilterModule = (() => {
     });
   }
 
+  // ── Programmatic Cross-Filtering ─────────────────────────────
+
+  /**
+   * Sets a single filter value (replacing any existing values for that field)
+   * and immediately applies the filters.
+   * @param {string} fieldId - e.g., 'fp-dept'
+   * @param {string} value - the exact value to filter by
+   */
+  function setFilter(fieldId, value) {
+    if (!_selections[fieldId]) return;
+    
+    // Clear the current selections for this field
+    _selections[fieldId].clear();
+    
+    // Add the new value
+    if (value) {
+      _selections[fieldId].add(value);
+    }
+
+    // Sync the UI
+    const ms = MULTI_SELECTS.find(m => m.field === fieldId);
+    if (ms) {
+      const container = document.getElementById(ms.container);
+      if (container) {
+        container.querySelectorAll('.fp-multiselect__option').forEach(opt => {
+          const isSelected = _selections[fieldId].has(opt.dataset.value);
+          opt.classList.toggle('fp-multiselect__option--selected', isSelected);
+          opt.setAttribute('aria-selected', String(isSelected));
+        });
+      }
+      _updateDisplayLabel(ms.field, ms);
+    }
+    
+    _updateActiveIndicator();
+    
+    // Apply filters and reload chart
+    applyFilters();
+  }
+
   // ── Public API ─────────────────────────────────────────────
 
   return {
@@ -2625,6 +2704,7 @@ const FilterModule = (() => {
     reset,
     loadPresets: _loadPresets,
     collectFilterValues,
+    setFilter,
   };
 
 })();
