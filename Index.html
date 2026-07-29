@@ -133,6 +133,9 @@
 
     <!-- Header Actions -->
     <div class="header__actions" role="toolbar" aria-label="Header actions">
+      <button class="header__icon-btn fp-open-btn" id="filterToggleBtn" aria-label="Toggle filter pane" title="Filters" aria-expanded="false" aria-controls="filter-pane">
+        ️
+      </button>
       <button class="header__icon-btn" id="refreshBtn" aria-label="Refresh data" title="Refresh">
         🔄
       </button>
@@ -245,6 +248,11 @@
      TOAST CONTAINER
 ═══════════════════════════════════════════════════════════════ -->
 <div class="toast-container" id="toastContainer" role="log" aria-live="polite" aria-label="Notifications"></div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     FILTER PANE
+═══════════════════════════════════════════════════════════════ -->
+  <?!= include('FilterPane'); ?>
 
 <!-- ═══════════════════════════════════════════════════════════
      JAVASCRIPT MODULES (order matters)

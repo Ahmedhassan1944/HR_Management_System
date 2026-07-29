@@ -2068,6 +2068,7 @@ async function _loadInitialData() {
 async function _boot() {
   _initSidebar();
   _initRefreshBtn();
+  FilterModule.init();
 
   const loaded = await _loadInitialData();
 
@@ -2096,4 +2097,522 @@ if (document.readyState === 'loading') {
 }
 
 
-</script>
+
+// ═══════════════════════════════════════════════════════════════
+//  FILTER MODULE
+//  Public API: FilterModule.apply(filters), .reset(), .loadPresets()
+// ═══════════════════════════════════════════════════════════════
+
+'use strict';
+
+const FilterModule = (() => {
+
+  // ── State ──────────────────────────────────────────────────
+  let _isOpen    = false;
+  let _isBusy    = false;
+  let _selections = {};   // { fieldId: Set<string> }
+  let _applyDebounceTimer = null;
+
+  // Dropdown config: { fieldId, optionsContainerId, displayId, triggerId, defaultLabel }
+  const MULTI_SELECTS = [
+    { field: 'fp-dept',        container: 'fp-dept-options',        display: 'fp-dept-display',        trigger: 'fp-dept-trigger',        label: 'All Departments' },
+    { field: 'fp-title',       container: 'fp-title-options',       display: 'fp-title-display',       trigger: 'fp-title-trigger',       label: 'All Titles' },
+    { field: 'fp-project',     container: 'fp-project-options',     display: 'fp-project-display',     trigger: 'fp-project-trigger',     label: 'All Projects' },
+    { field: 'fp-gender',      container: 'fp-gender-options',      display: 'fp-gender-display',      trigger: 'fp-gender-trigger',      label: 'All Genders' },
+    { field: 'fp-nationality', container: 'fp-nationality-options', display: 'fp-nationality-display', trigger: 'fp-nationality-trigger', label: 'All Nationalities' },
+    { field: 'fp-bank',        container: 'fp-bank-options',        display: 'fp-bank-display',        trigger: 'fp-bank-trigger',        label: 'All Banks' },
+    { field: 'fp-class',       container: 'fp-class-options',       display: 'fp-class-display',       trigger: 'fp-class-trigger',       label: 'All Classes' },
+    { field: 'fp-direct',      container: 'fp-direct-options',      display: 'fp-direct-display',      trigger: 'fp-direct-trigger',      label: 'All' },
+  ];
+
+  // ── Init ───────────────────────────────────────────────────
+
+  function init() {
+    // Initialize selection state
+    MULTI_SELECTS.forEach(ms => { _selections[ms.field] = new Set(); });
+
+    // Wire toggle button in header
+    document.getElementById('filterToggleBtn')?.addEventListener('click', toggle);
+
+    // Wire close button inside pane
+    document.getElementById('fp-toggle-close')?.addEventListener('click', close);
+
+    // Wire mobile overlay close
+    document.getElementById('fp-overlay')?.addEventListener('click', close);
+
+    // Wire action buttons
+    document.getElementById('fp-apply')?.addEventListener('click', () => applyFilters());
+    document.getElementById('fp-reset')?.addEventListener('click', reset);
+    document.getElementById('fp-save')?.addEventListener('click', _savePreset);
+    document.getElementById('fp-saved')?.addEventListener('change', _onPresetChange);
+
+    // Wire all multi-select dropdowns
+    MULTI_SELECTS.forEach(ms => _initMultiSelect(ms));
+
+    // Close all dropdowns when clicking outside
+    document.addEventListener('click', _onDocumentClick);
+
+    // Keyboard: Escape closes pane
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && _isOpen) close();
+    });
+
+    // Populate options + load presets after initial data is available
+    _populateDropdowns();
+    _loadPresets();
+  }
+
+  // ── Pane Open / Close ──────────────────────────────────────
+
+  function open() {
+    _isOpen = true;
+    const pane = document.getElementById('filter-pane');
+    const overlay = document.getElementById('fp-overlay');
+    const btn = document.getElementById('filterToggleBtn');
+
+    pane?.classList.remove('filter-pane--closed');
+    pane?.setAttribute('aria-hidden', 'false');
+    overlay?.classList.add('fp-overlay--visible');
+    overlay?.setAttribute('aria-hidden', 'false');
+    btn?.setAttribute('aria-expanded', 'true');
+
+    // Focus first interactive element for a11y
+    setTimeout(() => document.getElementById('fp-search')?.focus(), 320);
+  }
+
+  function close() {
+    _isOpen = false;
+    const pane = document.getElementById('filter-pane');
+    const overlay = document.getElementById('fp-overlay');
+    const btn = document.getElementById('filterToggleBtn');
+
+    pane?.classList.add('filter-pane--closed');
+    pane?.setAttribute('aria-hidden', 'true');
+    overlay?.classList.remove('fp-overlay--visible');
+    overlay?.setAttribute('aria-hidden', 'true');
+    btn?.setAttribute('aria-expanded', 'false');
+    btn?.focus();
+  }
+
+  function toggle() {
+    _isOpen ? close() : open();
+  }
+
+  // ── Multi-Select Component ─────────────────────────────────
+
+  function _initMultiSelect({ field, container, display, trigger, label }) {
+    const triggerEl = document.getElementById(trigger);
+    const listId = trigger.replace('-trigger', '-list');
+    const listEl = document.getElementById(listId);
+    if (!triggerEl || !listEl) return;
+
+    triggerEl.addEventListener('click', e => {
+      e.stopPropagation();
+      const isOpen = listEl.classList.contains('fp-multiselect__dropdown--open');
+      _closeAllDropdowns();
+      if (!isOpen) {
+        listEl.classList.add('fp-multiselect__dropdown--open');
+        triggerEl.setAttribute('aria-expanded', 'true');
+        listEl.querySelector('.fp-multiselect__search')?.focus();
+      }
+    });
+
+    triggerEl.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        triggerEl.click();
+      }
+    });
+
+    // In-dropdown search filter
+    const searchInput = listEl.querySelector('.fp-multiselect__search');
+    if (searchInput) {
+      searchInput.addEventListener('input', () => {
+        const q = searchInput.value.toLowerCase();
+        const opts = document.getElementById(container);
+        if (!opts) return;
+        opts.querySelectorAll('.fp-multiselect__option').forEach(opt => {
+          const text = opt.querySelector('.fp-multiselect__option-label')?.textContent.toLowerCase() ?? '';
+          opt.style.display = text.includes(q) ? '' : 'none';
+        });
+      });
+    }
+  }
+
+  function _buildOption(value, fieldId, config) {
+    const opt = document.createElement('div');
+    opt.className = 'fp-multiselect__option';
+    opt.setAttribute('role', 'option');
+    opt.setAttribute('aria-selected', 'false');
+    opt.dataset.value = value;
+
+    opt.innerHTML = `
+      <span class="fp-multiselect__option-check" aria-hidden="true">✓</span>
+      <span class="fp-multiselect__option-label">${value}</span>
+    `;
+
+    opt.addEventListener('click', e => {
+      e.stopPropagation();
+      _toggleOption(value, fieldId, opt, config);
+    });
+
+    return opt;
+  }
+
+  function _toggleOption(value, fieldId, optEl, config) {
+    const sel = _selections[fieldId];
+    if (sel.has(value)) {
+      sel.delete(value);
+      optEl.classList.remove('fp-multiselect__option--selected');
+      optEl.setAttribute('aria-selected', 'false');
+    } else {
+      sel.add(value);
+      optEl.classList.add('fp-multiselect__option--selected');
+      optEl.setAttribute('aria-selected', 'true');
+    }
+    _updateDisplayLabel(fieldId, config);
+    _updateActiveIndicator();
+  }
+
+  function _updateDisplayLabel(fieldId, config) {
+    const sel = _selections[fieldId];
+    const displayEl = document.getElementById(config.display);
+    if (!displayEl) return;
+
+    if (sel.size === 0) {
+      displayEl.textContent = config.label;
+      displayEl.classList.remove('fp-multiselect__placeholder--selected');
+    } else if (sel.size === 1) {
+      displayEl.textContent = [...sel][0];
+      displayEl.classList.add('fp-multiselect__placeholder--selected');
+    } else {
+      displayEl.textContent = `${sel.size} selected`;
+      displayEl.classList.add('fp-multiselect__placeholder--selected');
+    }
+  }
+
+  function _closeAllDropdowns() {
+    document.querySelectorAll('.fp-multiselect__dropdown--open').forEach(d => {
+      d.classList.remove('fp-multiselect__dropdown--open');
+    });
+    document.querySelectorAll('.fp-multiselect__trigger[aria-expanded="true"]').forEach(t => {
+      t.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  function _onDocumentClick(e) {
+    if (!e.target.closest('.fp-multiselect')) _closeAllDropdowns();
+  }
+
+  function _populateContainerWithOptions(containerId, values, fieldId, config) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    container.innerHTML = '';
+
+    if (!values || values.length === 0) {
+      container.innerHTML = `<div class="fp-multiselect__empty">No options available</div>`;
+      return;
+    }
+
+    values.forEach(v => {
+      if (v) container.appendChild(_buildOption(String(v), fieldId, config));
+    });
+  }
+
+  // ── Populate Dropdowns from API ────────────────────────────
+
+  async function _populateDropdowns() {
+    try {
+      const lookup = await _callServer('api_getLookupData');
+      if (!lookup) return;
+
+      const fieldMap = {
+        'fp-dept':        { data: lookup.departments,   config: MULTI_SELECTS.find(m => m.field === 'fp-dept') },
+        'fp-title':       { data: lookup.titles,        config: MULTI_SELECTS.find(m => m.field === 'fp-title') },
+        'fp-project':     { data: lookup.projects,      config: MULTI_SELECTS.find(m => m.field === 'fp-project') },
+        'fp-gender':      { data: lookup.genders,       config: MULTI_SELECTS.find(m => m.field === 'fp-gender') },
+        'fp-nationality': { data: lookup.nationalities, config: MULTI_SELECTS.find(m => m.field === 'fp-nationality') },
+        'fp-bank':        { data: lookup.banks,         config: MULTI_SELECTS.find(m => m.field === 'fp-bank') },
+        'fp-class':       { data: lookup.classes,       config: MULTI_SELECTS.find(m => m.field === 'fp-class') },
+        'fp-direct':      { data: lookup.direct,        config: MULTI_SELECTS.find(m => m.field === 'fp-direct') },
+      };
+
+      Object.entries(fieldMap).forEach(([fieldId, { data, config }]) => {
+        if (!config) return;
+        _populateContainerWithOptions(config.container, data ?? [], fieldId, config);
+      });
+    } catch (err) {
+      console.warn('[FilterModule] Could not populate dropdowns:', err);
+    }
+  }
+
+  // ── Collect Values ─────────────────────────────────────────
+
+  function collectFilterValues() {
+    return {
+      search:        document.getElementById('fp-search')?.value.trim() || null,
+      departments:   [...(_selections['fp-dept']        ?? [])],
+      titles:        [...(_selections['fp-title']       ?? [])],
+      projects:      [...(_selections['fp-project']     ?? [])],
+      genders:       [...(_selections['fp-gender']      ?? [])],
+      nationalities: [...(_selections['fp-nationality'] ?? [])],
+      banks:         [...(_selections['fp-bank']        ?? [])],
+      classes:       [...(_selections['fp-class']       ?? [])],
+      directs:       [...(_selections['fp-direct']      ?? [])],
+      dateStart:     document.getElementById('fp-date-start')?.value || null,
+      dateEnd:       document.getElementById('fp-date-end')?.value   || null,
+      salaryMin:     parseFloat(document.getElementById('fp-salary-min')?.value) || null,
+      salaryMax:     parseFloat(document.getElementById('fp-salary-max')?.value) || null,
+      activeOnly:    document.getElementById('fp-active')?.checked ?? false,
+    };
+  }
+
+  function _hasActiveFilters(filters) {
+    if (!filters) return false;
+    return (
+      filters.search ||
+      filters.departments?.length  || filters.titles?.length ||
+      filters.projects?.length     || filters.genders?.length ||
+      filters.nationalities?.length|| filters.banks?.length  ||
+      filters.classes?.length      || filters.directs?.length ||
+      filters.dateStart || filters.dateEnd ||
+      filters.salaryMin || filters.salaryMax ||
+      filters.activeOnly
+    );
+  }
+
+  function _updateActiveIndicator() {
+    const filters = collectFilterValues();
+    const btn = document.getElementById('filterToggleBtn');
+    if (!btn) return;
+    if (_hasActiveFilters(filters)) {
+      btn.classList.add('fp-open-btn--active');
+    } else {
+      btn.classList.remove('fp-open-btn--active');
+    }
+  }
+
+  // ── Apply / Reset ──────────────────────────────────────────
+
+  async function applyFilters(debounce = false) {
+    if (_isBusy) return;
+
+    if (debounce) {
+      clearTimeout(_applyDebounceTimer);
+      _applyDebounceTimer = setTimeout(() => applyFilters(false), 400);
+      return;
+    }
+
+    const filters = collectFilterValues();
+    _setLoading(true);
+
+    try {
+      const result = await _callServer('api_getFilteredEmployees', filters);
+      const employees = result ?? [];
+
+      // Update result count badge
+      const countEl = document.getElementById('fp-result-count');
+      if (countEl) countEl.textContent = employees.length;
+
+      // Update active indicator on toggle button
+      _updateActiveIndicator();
+
+      // Render into the current page view
+      const page = AppState?.currentPage;
+      if (page === 'dashboard') {
+        DashboardModule.render(employees, AppState.documents);
+      } else if (page === 'insights') {
+        // Re-render insights using the filtered employee set
+        InsightsModule.renderFiltered?.(employees) ??
+          Toast.show('Filters Applied', `${employees.length} employee(s) matched.`, 'info');
+      } else if (page === 'employees') {
+        EmployeesModule.render(employees);
+      }
+    } catch (err) {
+      Toast.show('Filter Error', err?.message ?? 'Failed to apply filters.', 'error');
+    } finally {
+      _setLoading(false);
+    }
+  }
+
+  function reset() {
+    // Clear text / date / number inputs
+    ['fp-search', 'fp-date-start', 'fp-date-end', 'fp-salary-min', 'fp-salary-max'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+
+    // Uncheck toggle
+    const active = document.getElementById('fp-active');
+    if (active) {
+      active.checked = false;
+      active.setAttribute('aria-checked', 'false');
+    }
+
+    // Clear all multi-select selections
+    MULTI_SELECTS.forEach(ms => {
+      _selections[ms.field].clear();
+      _updateDisplayLabel(ms.field, ms);
+      document.getElementById(ms.container)
+        ?.querySelectorAll('.fp-multiselect__option--selected')
+        .forEach(el => {
+          el.classList.remove('fp-multiselect__option--selected');
+          el.setAttribute('aria-selected', 'false');
+        });
+    });
+
+    // Clear preset selector
+    const savedEl = document.getElementById('fp-saved');
+    if (savedEl) savedEl.value = '';
+
+    // Update indicator
+    _updateActiveIndicator();
+
+    // Refresh view with unfiltered data
+    applyFilters();
+  }
+
+  // ── Presets ────────────────────────────────────────────────
+
+  async function _savePreset() {
+    const name = prompt('Enter a name for this filter preset:')?.trim();
+    if (!name) return;
+
+    const filters = collectFilterValues();
+    try {
+      await _callServer('api_saveFilterPreset', 'default_user', name, filters);
+      Toast.show('Preset Saved', `Preset "${name}" saved successfully.`, 'success');
+      await _loadPresets();
+    } catch (err) {
+      Toast.show('Save Error', err?.message ?? 'Could not save preset.', 'error');
+    }
+  }
+
+  async function _loadPresets() {
+    try {
+      const presets = await _callServer('api_getFilterPresets', 'default_user');
+      const select = document.getElementById('fp-saved');
+      if (!select || !presets) return;
+
+      const currentVal = select.value;
+      select.innerHTML = '<option value="">— Load preset —</option>';
+
+      Object.entries(presets).forEach(([name, jsonStr]) => {
+        const opt = document.createElement('option');
+        opt.value = jsonStr;
+        opt.textContent = name;
+        select.appendChild(opt);
+      });
+
+      if (currentVal) select.value = currentVal;
+    } catch (err) {
+      console.warn('[FilterModule] Could not load presets:', err);
+    }
+  }
+
+  function _onPresetChange(e) {
+    const jsonStr = e.target.value;
+    if (!jsonStr) return;
+
+    try {
+      const preset = JSON.parse(jsonStr);
+      _applyPresetToUI(preset);
+      applyFilters();
+    } catch (err) {
+      Toast.show('Error', 'Could not load preset.', 'error');
+    }
+  }
+
+  function _applyPresetToUI(preset) {
+    // Text / date / number inputs
+    if (document.getElementById('fp-search'))      document.getElementById('fp-search').value      = preset.search ?? '';
+    if (document.getElementById('fp-date-start'))  document.getElementById('fp-date-start').value  = preset.dateStart ?? '';
+    if (document.getElementById('fp-date-end'))    document.getElementById('fp-date-end').value    = preset.dateEnd ?? '';
+    if (document.getElementById('fp-salary-min'))  document.getElementById('fp-salary-min').value  = preset.salaryMin ?? '';
+    if (document.getElementById('fp-salary-max'))  document.getElementById('fp-salary-max').value  = preset.salaryMax ?? '';
+
+    const activeEl = document.getElementById('fp-active');
+    if (activeEl) {
+      activeEl.checked = !!preset.activeOnly;
+      activeEl.setAttribute('aria-checked', String(!!preset.activeOnly));
+    }
+
+    // Multi-selects
+    const fieldMap = {
+      'fp-dept':        preset.departments,
+      'fp-title':       preset.titles,
+      'fp-project':     preset.projects,
+      'fp-gender':      preset.genders,
+      'fp-nationality': preset.nationalities,
+      'fp-bank':        preset.banks,
+      'fp-class':       preset.classes,
+      'fp-direct':      preset.directs,
+    };
+
+    MULTI_SELECTS.forEach(ms => {
+      const values = new Set(fieldMap[ms.field] ?? []);
+      _selections[ms.field] = values;
+
+      const container = document.getElementById(ms.container);
+      container?.querySelectorAll('.fp-multiselect__option').forEach(opt => {
+        const isSelected = values.has(opt.dataset.value);
+        opt.classList.toggle('fp-multiselect__option--selected', isSelected);
+        opt.setAttribute('aria-selected', String(isSelected));
+      });
+
+      _updateDisplayLabel(ms.field, ms);
+    });
+
+    _updateActiveIndicator();
+  }
+
+  // ── Loading State ──────────────────────────────────────────
+
+  function _setLoading(busy) {
+    _isBusy = busy;
+    const loading = document.getElementById('fp-loading');
+    const applyBtn = document.getElementById('fp-apply');
+
+    loading?.classList.toggle('fp-loading--visible', busy);
+    loading?.setAttribute('aria-hidden', String(!busy));
+
+    if (applyBtn) {
+      applyBtn.disabled = busy;
+      applyBtn.textContent = busy ? 'Applying…' : 'Apply Filters';
+    }
+  }
+
+  // ── Server Call Helper ─────────────────────────────────────
+
+  function _callServer(fnName, ...args) {
+    return new Promise((resolve, reject) => {
+      const runner = google.script.run
+        .withSuccessHandler(res => {
+          if (res?.status === 'success') resolve(res.data);
+          else reject(new Error(res?.message ?? `Server error in ${fnName}`));
+        })
+        .withFailureHandler(err => reject(new Error(err?.message ?? `Network error in ${fnName}`)));
+
+      runner[fnName](...args);
+    });
+  }
+
+  // ── Public API ─────────────────────────────────────────────
+
+  return {
+    init,
+    open,
+    close,
+    toggle,
+    apply: applyFilters,
+    reset,
+    loadPresets: _loadPresets,
+    collectFilterValues,
+  };
+
+})();
+
+// ── Wire FilterModule into _boot ────────────────────────────
+const _originalBoot = typeof _boot === 'function' ? _boot : null;
+
+</script>

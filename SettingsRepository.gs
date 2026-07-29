@@ -104,9 +104,24 @@ const SettingsRepository = (() => {
     }
   }
 
+  /**
+   * Reads all settings whose key starts with the given prefix.
+   * @param {string} prefix
+   * @returns {Object.<string, string>}
+   */
+  function listByPrefix(prefix) {
+    const all = getAll();
+    const result = {};
+    for (const [k, v] of Object.entries(all)) {
+      if (k.startsWith(prefix)) result[k] = v;
+    }
+    return result;
+  }
+
   return {
     getAll,
     getValue,
     upsert,
+    listByPrefix,
   };
 })();

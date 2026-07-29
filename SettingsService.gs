@@ -64,9 +64,48 @@ const SettingsService = (() => {
     });
   }
 
+  /**
+   * Saves a user filter preset by name.
+   * Key format: `{userId}:filterPreset:{name}`
+   * @param {string} userId
+   * @param {string} name
+   * @param {Object} filter
+   * @returns {Object} Response envelope
+   */
+  function saveFilterPreset(userId, name, filter) {
+    return Response.wrap(() => {
+      if (!userId || !name) return Response.error('userId and name are required.');
+      const key = `${userId}:filterPreset:${name}`;
+      SettingsRepository.upsert(key, JSON.stringify(filter), `Filter preset: ${name}`);
+      return Response.success({ key }, `Preset "${name}" saved.`);
+    });
+  }
+
+  /**
+   * Retrieves all filter presets for a user.
+   * Returns a map of { presetName: filterJsonString }
+   * @param {string} userId
+   * @returns {Object} Response envelope
+   */
+  function getFilterPresets(userId) {
+    return Response.wrap(() => {
+      if (!userId) return Response.error('userId is required.');
+      const prefix  = `${userId}:filterPreset:`;
+      const raw     = SettingsRepository.listByPrefix(prefix);
+      const presets = {};
+      for (const [k, v] of Object.entries(raw)) {
+        const presetName = k.replace(prefix, '');
+        if (presetName) presets[presetName] = v;
+      }
+      return Response.success(presets);
+    });
+  }
+
   return {
     getAllSettings,
     updateSetting,
     bulkUpdateSettings,
+    saveFilterPreset,
+    getFilterPresets,
   };
 })();

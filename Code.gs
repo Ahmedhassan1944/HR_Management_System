@@ -130,3 +130,39 @@ function api_updateSetting(key, value) {
 function api_bulkUpdateSettings(settingsMap) {
   return SettingsService.bulkUpdateSettings(settingsMap);
 }
+
+// ============================================================
+//  FILTER PANE API
+// ============================================================
+
+/**
+ * Returns employees matching the given filter object.
+ * Called by: FilterModule (client) — filter pane Apply button.
+ * @param {Object} filters
+ * @returns {Object} Response envelope
+ */
+function api_getFilteredEmployees(filters) {
+  return EmployeeService.getFilteredEmployees(filters);
+}
+
+/**
+ * Saves a named filter preset for a user.
+ * Called by: FilterModule (client) — filter pane Save button.
+ * @param {string} userId
+ * @param {string} name
+ * @param {Object} filter
+ * @returns {Object} Response envelope
+ */
+function api_saveFilterPreset(userId, name, filter) {
+  return SettingsService.saveFilterPreset(userId, name, filter);
+}
+
+/**
+ * Returns all filter presets for a user.
+ * Called by: FilterModule (client) — filter pane on init.
+ * @param {string} userId
+ * @returns {Object} Response envelope
+ */
+function api_getFilterPresets(userId) {
+  return SettingsService.getFilterPresets(userId);
+}

@@ -122,9 +122,77 @@ const EmployeeRepository = (() => {
   //  PUBLIC API
   // ────────────────────────────────────────────────────────────
 
+  /**
+   * Returns employees matching the given filter object.
+   * All array-based filters use OR logic within the field (multi-select).
+   * @param {Object} filters
+   * @returns {Object[]}
+   */
+  function queryWithFilters(filters) {
+    let results = getAll();
+    if (!filters) return results;
+
+    // ── Text search (name or code) ──
+    if (filters.search) {
+      const q = String(filters.search).toLowerCase();
+      results = results.filter(emp =>
+        (emp.name  && emp.name.toLowerCase().includes(q)) ||
+        (emp.code  && emp.code.toLowerCase().includes(q))
+      );
+    }
+
+    // ── Array / multi-select filters ──
+    const arrayFilters = [
+      { key: 'departments',   field: 'department' },
+      { key: 'titles',        field: 'title' },
+      { key: 'projects',      field: 'project' },
+      { key: 'genders',       field: 'gender' },
+      { key: 'nationalities', field: 'nationality' },
+      { key: 'banks',         field: 'bank' },
+      { key: 'classes',       field: 'class' },
+      { key: 'directs',       field: 'direct' },
+    ];
+
+    arrayFilters.forEach(({ key, field }) => {
+      const vals = filters[key];
+      if (vals && vals.length > 0) {
+        results = results.filter(emp => vals.includes(emp[field]));
+      }
+    });
+
+    // ── Hire date range ──
+    if (filters.dateStart) {
+      const ds = new Date(filters.dateStart);
+      results = results.filter(emp => emp.hireDate && new Date(emp.hireDate) >= ds);
+    }
+    if (filters.dateEnd) {
+      const de = new Date(filters.dateEnd);
+      results = results.filter(emp => emp.hireDate && new Date(emp.hireDate) <= de);
+    }
+
+    // ── Salary range (stored in `package` field) ──
+    if (filters.salaryMin !== null && filters.salaryMin !== undefined) {
+      results = results.filter(emp => (parseFloat(emp.package) || 0) >= filters.salaryMin);
+    }
+    if (filters.salaryMax !== null && filters.salaryMax !== undefined) {
+      results = results.filter(emp => (parseFloat(emp.package) || 0) <= filters.salaryMax);
+    }
+
+    // ── Boolean: active only (exclude resigned / terminated) ──
+    if (filters.activeOnly) {
+      results = results.filter(emp => {
+        const cls = (emp.class || '').toLowerCase();
+        return !cls.includes('resigned') && !cls.includes('terminated') && !cls.includes('inactive');
+      });
+    }
+
+    return results;
+  }
+
   return {
     getAll,
     findByCode,
     getDistinctValues,
+    queryWithFilters,
   };
 })();

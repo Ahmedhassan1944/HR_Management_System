@@ -103,9 +103,24 @@ const EmployeeService = (() => {
         projects:     EmployeeRepository.getDistinctValues('project'),
         titles:       EmployeeRepository.getDistinctValues('title'),
         nationalities:EmployeeRepository.getDistinctValues('nationality'),
+        genders:      EmployeeRepository.getDistinctValues('gender'),
+        banks:        EmployeeRepository.getDistinctValues('bank'),
         classes:      EmployeeRepository.getDistinctValues('class'),
         direct:       EmployeeRepository.getDistinctValues('direct'),
       });
+    });
+  }
+
+  /**
+   * Returns employees matching the given filter object.
+   * @param {Object} filters
+   * @returns {Object} Response envelope
+   */
+  function getFilteredEmployees(filters) {
+    return Response.wrap(() => {
+      const employees = EmployeeRepository.queryWithFilters(filters);
+      const enriched  = employees.map(emp => _sanitizeForClient(_enrich(emp)));
+      return Response.success(enriched, `${enriched.length} employee(s) matched filters.`);
     });
   }
 
@@ -113,5 +128,6 @@ const EmployeeService = (() => {
     getAllEmployees,
     getEmployeeByCode,
     getLookupData,
+    getFilteredEmployees,
   };
 })();

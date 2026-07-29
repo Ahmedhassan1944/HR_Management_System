@@ -1,0 +1,248 @@
+<!-- ═══════════════════════════════════════════════════════════
+     FilterPane.html — Reusable Power-BI-style Filter Pane
+     Included in Index.html via <?!= include('FilterPane'); ?>
+     Controlled by FilterModule in Script.html
+═══════════════════════════════════════════════════════════════ -->
+
+<!-- Filter Pane Overlay (for mobile) -->
+<div id="fp-overlay" class="fp-overlay" aria-hidden="true"></div>
+
+<!-- Filter Pane -->
+<aside id="filter-pane" class="filter-pane filter-pane--closed" role="complementary" aria-label="Filter pane" aria-hidden="true">
+
+  <!-- ── Header ── -->
+  <div class="fp-header">
+    <div class="fp-header__left">
+      <span class="fp-header__icon" aria-hidden="true">⚡</span>
+      <h3 class="fp-header__title">Filters</h3>
+      <span class="fp-result-count" id="fp-result-count" aria-live="polite" aria-label="Filter results"></span>
+    </div>
+    <button class="fp-header__close" id="fp-toggle-close" aria-label="Close filter pane" title="Close">✕</button>
+  </div>
+
+  <!-- ── Body ── -->
+  <div class="fp-body" id="fp-body">
+
+    <!-- Search -->
+    <div class="fp-group">
+      <label class="fp-label" for="fp-search">Search</label>
+      <div class="fp-search-wrap">
+        <span class="fp-search-icon" aria-hidden="true">🔍</span>
+        <input
+          type="search"
+          id="fp-search"
+          class="fp-input fp-input--search"
+          placeholder="Name or employee code…"
+          autocomplete="off"
+          aria-label="Search employees"
+        />
+      </div>
+    </div>
+
+    <div class="fp-divider"></div>
+
+    <!-- Department -->
+    <div class="fp-group">
+      <label class="fp-label" for="fp-dept">Department</label>
+      <div class="fp-multiselect" id="fp-dept-container" data-field="fp-dept">
+        <div class="fp-multiselect__trigger" id="fp-dept-trigger" tabindex="0" role="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="fp-dept-list">
+          <span class="fp-multiselect__placeholder" id="fp-dept-display">All Departments</span>
+          <span class="fp-multiselect__caret" aria-hidden="true">▾</span>
+        </div>
+        <div class="fp-multiselect__dropdown" id="fp-dept-list" role="listbox" aria-label="Department options" aria-multiselectable="true">
+          <div class="fp-multiselect__search-wrap">
+            <input type="text" class="fp-multiselect__search" placeholder="Search…" aria-label="Search departments"/>
+          </div>
+          <div class="fp-multiselect__options" id="fp-dept-options"></div>
+        </div>
+        <input type="hidden" id="fp-dept" name="departments" />
+      </div>
+    </div>
+
+    <!-- Title -->
+    <div class="fp-group">
+      <label class="fp-label" for="fp-title">Job Title</label>
+      <div class="fp-multiselect" id="fp-title-container" data-field="fp-title">
+        <div class="fp-multiselect__trigger" id="fp-title-trigger" tabindex="0" role="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="fp-title-list">
+          <span class="fp-multiselect__placeholder" id="fp-title-display">All Titles</span>
+          <span class="fp-multiselect__caret" aria-hidden="true">▾</span>
+        </div>
+        <div class="fp-multiselect__dropdown" id="fp-title-list" role="listbox" aria-label="Title options" aria-multiselectable="true">
+          <div class="fp-multiselect__search-wrap">
+            <input type="text" class="fp-multiselect__search" placeholder="Search…" aria-label="Search titles"/>
+          </div>
+          <div class="fp-multiselect__options" id="fp-title-options"></div>
+        </div>
+        <input type="hidden" id="fp-title" name="titles" />
+      </div>
+    </div>
+
+    <!-- Project -->
+    <div class="fp-group">
+      <label class="fp-label" for="fp-project">Project</label>
+      <div class="fp-multiselect" id="fp-project-container" data-field="fp-project">
+        <div class="fp-multiselect__trigger" id="fp-project-trigger" tabindex="0" role="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="fp-project-list">
+          <span class="fp-multiselect__placeholder" id="fp-project-display">All Projects</span>
+          <span class="fp-multiselect__caret" aria-hidden="true">▾</span>
+        </div>
+        <div class="fp-multiselect__dropdown" id="fp-project-list" role="listbox" aria-label="Project options" aria-multiselectable="true">
+          <div class="fp-multiselect__search-wrap">
+            <input type="text" class="fp-multiselect__search" placeholder="Search…" aria-label="Search projects"/>
+          </div>
+          <div class="fp-multiselect__options" id="fp-project-options"></div>
+        </div>
+        <input type="hidden" id="fp-project" name="projects" />
+      </div>
+    </div>
+
+    <!-- Gender -->
+    <div class="fp-group">
+      <label class="fp-label" for="fp-gender">Gender</label>
+      <div class="fp-multiselect" id="fp-gender-container" data-field="fp-gender">
+        <div class="fp-multiselect__trigger" id="fp-gender-trigger" tabindex="0" role="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="fp-gender-list">
+          <span class="fp-multiselect__placeholder" id="fp-gender-display">All Genders</span>
+          <span class="fp-multiselect__caret" aria-hidden="true">▾</span>
+        </div>
+        <div class="fp-multiselect__dropdown" id="fp-gender-list" role="listbox" aria-label="Gender options" aria-multiselectable="true">
+          <div class="fp-multiselect__options" id="fp-gender-options"></div>
+        </div>
+        <input type="hidden" id="fp-gender" name="genders" />
+      </div>
+    </div>
+
+    <!-- Nationality -->
+    <div class="fp-group">
+      <label class="fp-label" for="fp-nationality">Nationality</label>
+      <div class="fp-multiselect" id="fp-nationality-container" data-field="fp-nationality">
+        <div class="fp-multiselect__trigger" id="fp-nationality-trigger" tabindex="0" role="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="fp-nationality-list">
+          <span class="fp-multiselect__placeholder" id="fp-nationality-display">All Nationalities</span>
+          <span class="fp-multiselect__caret" aria-hidden="true">▾</span>
+        </div>
+        <div class="fp-multiselect__dropdown" id="fp-nationality-list" role="listbox" aria-label="Nationality options" aria-multiselectable="true">
+          <div class="fp-multiselect__search-wrap">
+            <input type="text" class="fp-multiselect__search" placeholder="Search…" aria-label="Search nationalities"/>
+          </div>
+          <div class="fp-multiselect__options" id="fp-nationality-options"></div>
+        </div>
+        <input type="hidden" id="fp-nationality" name="nationalities" />
+      </div>
+    </div>
+
+    <!-- Bank -->
+    <div class="fp-group">
+      <label class="fp-label" for="fp-bank">Bank</label>
+      <div class="fp-multiselect" id="fp-bank-container" data-field="fp-bank">
+        <div class="fp-multiselect__trigger" id="fp-bank-trigger" tabindex="0" role="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="fp-bank-list">
+          <span class="fp-multiselect__placeholder" id="fp-bank-display">All Banks</span>
+          <span class="fp-multiselect__caret" aria-hidden="true">▾</span>
+        </div>
+        <div class="fp-multiselect__dropdown" id="fp-bank-list" role="listbox" aria-label="Bank options" aria-multiselectable="true">
+          <div class="fp-multiselect__options" id="fp-bank-options"></div>
+        </div>
+        <input type="hidden" id="fp-bank" name="banks" />
+      </div>
+    </div>
+
+    <!-- Class -->
+    <div class="fp-group">
+      <label class="fp-label" for="fp-class">Class</label>
+      <div class="fp-multiselect" id="fp-class-container" data-field="fp-class">
+        <div class="fp-multiselect__trigger" id="fp-class-trigger" tabindex="0" role="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="fp-class-list">
+          <span class="fp-multiselect__placeholder" id="fp-class-display">All Classes</span>
+          <span class="fp-multiselect__caret" aria-hidden="true">▾</span>
+        </div>
+        <div class="fp-multiselect__dropdown" id="fp-class-list" role="listbox" aria-label="Class options" aria-multiselectable="true">
+          <div class="fp-multiselect__options" id="fp-class-options"></div>
+        </div>
+        <input type="hidden" id="fp-class" name="classes" />
+      </div>
+    </div>
+
+    <!-- Direct / Indirect -->
+    <div class="fp-group">
+      <label class="fp-label" for="fp-direct">Direct / Indirect</label>
+      <div class="fp-multiselect" id="fp-direct-container" data-field="fp-direct">
+        <div class="fp-multiselect__trigger" id="fp-direct-trigger" tabindex="0" role="button" aria-haspopup="listbox" aria-expanded="false" aria-controls="fp-direct-list">
+          <span class="fp-multiselect__placeholder" id="fp-direct-display">All</span>
+          <span class="fp-multiselect__caret" aria-hidden="true">▾</span>
+        </div>
+        <div class="fp-multiselect__dropdown" id="fp-direct-list" role="listbox" aria-label="Direct options" aria-multiselectable="true">
+          <div class="fp-multiselect__options" id="fp-direct-options"></div>
+        </div>
+        <input type="hidden" id="fp-direct" name="directs" />
+      </div>
+    </div>
+
+    <div class="fp-divider"></div>
+
+    <!-- Hire Date Range -->
+    <div class="fp-group">
+      <label class="fp-label">Hire Date Range</label>
+      <div class="fp-date-range">
+        <div class="fp-date-range__field">
+          <label class="fp-date-range__label" for="fp-date-start">From</label>
+          <input type="date" id="fp-date-start" class="fp-input fp-input--date" aria-label="Hire date start"/>
+        </div>
+        <span class="fp-date-range__sep" aria-hidden="true">→</span>
+        <div class="fp-date-range__field">
+          <label class="fp-date-range__label" for="fp-date-end">To</label>
+          <input type="date" id="fp-date-end" class="fp-input fp-input--date" aria-label="Hire date end"/>
+        </div>
+      </div>
+    </div>
+
+    <!-- Salary Range -->
+    <div class="fp-group">
+      <label class="fp-label">Salary Range</label>
+      <div class="fp-range">
+        <input type="number" id="fp-salary-min" class="fp-input fp-input--number" placeholder="Min" min="0" aria-label="Minimum salary"/>
+        <span class="fp-range__sep" aria-hidden="true">–</span>
+        <input type="number" id="fp-salary-max" class="fp-input fp-input--number" placeholder="Max" min="0" aria-label="Maximum salary"/>
+      </div>
+    </div>
+
+    <div class="fp-divider"></div>
+
+    <!-- Boolean Toggles -->
+    <div class="fp-group">
+      <span class="fp-label">Status</span>
+      <label class="fp-toggle" for="fp-active">
+        <input type="checkbox" id="fp-active" class="fp-toggle__input" role="switch" aria-checked="false"/>
+        <span class="fp-toggle__track" aria-hidden="true">
+          <span class="fp-toggle__thumb"></span>
+        </span>
+        <span class="fp-toggle__label">Active employees only</span>
+      </label>
+    </div>
+
+  </div><!-- /fp-body -->
+
+  <!-- ── Footer: Presets + Actions ── -->
+  <div class="fp-footer">
+
+    <!-- Presets Row -->
+    <div class="fp-presets">
+      <label class="fp-label" for="fp-saved" style="margin-bottom:var(--space-2)">Saved Presets</label>
+      <div class="fp-presets__row">
+        <select id="fp-saved" class="fp-select fp-presets__select" aria-label="Load saved filter preset">
+          <option value="">— Load preset —</option>
+        </select>
+        <button id="fp-save" class="fp-btn fp-btn--ghost fp-btn--icon" aria-label="Save current filter as preset" title="Save preset">💾</button>
+      </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="fp-actions">
+      <button id="fp-reset" class="fp-btn fp-btn--secondary" aria-label="Reset all filters">Reset</button>
+      <button id="fp-apply" class="fp-btn fp-btn--primary" aria-label="Apply filters">Apply Filters</button>
+    </div>
+
+  </div><!-- /fp-footer -->
+
+  <!-- Loading overlay inside pane -->
+  <div class="fp-loading" id="fp-loading" aria-hidden="true">
+    <div class="fp-loading__spinner"></div>
+    <span>Applying filters…</span>
+  </div>
+
+</aside>
