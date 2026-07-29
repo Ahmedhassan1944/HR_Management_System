@@ -99,69 +99,91 @@ const InsightsService = (() => {
   // ────────────────────────────────────────────────────────────
 
   /**
-   * Returns the complete HR Insights payload for all charts.
+   * Computes the insights payload for a given set of employees.
+   * @param {Object[]} employees
+   * @returns {Object} Payload object for charts and KPIs
+   */
+  function _computeInsightsPayload(employees) {
+    const total = employees.length;
+
+    // KPI - Top Level
+    const avgAge = employees.reduce((sum, e) => {
+      const age = parseFloat(e.age);
+      return isNaN(age) ? sum : sum + age;
+    }, 0) / (employees.filter(e => e.age).length || 1);
+
+    const kpis = {
+      totalEmployees: total,
+      averageAge:     Number(avgAge.toFixed(1)),
+      maleCount:      employees.filter(e => e.gender === 'Male').length,
+      femaleCount:    employees.filter(e => e.gender === 'Female').length,
+      directCount:    employees.filter(e => e.direct === 'Direct').length,
+      indirectCount:  employees.filter(e => e.direct === 'Indirect').length,
+    };
+
+    // Distribution Charts
+    const byDepartment  = _groupAndCount(employees, 'department');
+    const bySection     = _groupAndCount(employees, 'section');
+    const byProject     = _groupAndCount(employees, 'project');
+    const byNationality = _groupAndCount(employees, 'nationality');
+    const byGender      = _groupAndCount(employees, 'gender');
+    const byTitle       = _groupAndCount(employees, 'title');
+    const byClass       = _groupAndCount(employees, 'class');
+    const byDirect      = _groupAndCount(employees, 'direct');
+
+    // Trends & Demographics
+    const ageDistribution  = _ageDistribution(employees);
+    const hiringTrend      = _hiringTrend(employees);
+
+    // Document Expiry Status Charts
+    const passportExpiryStats = _expiryStatusSummary(employees, 'passportExp');
+    const civilExpiryStats    = _expiryStatusSummary(employees, 'civilExp');
+    const contractExpiryStats = _expiryStatusSummary(employees, 'contractExp');
+
+    return {
+      kpis,
+      byDepartment,
+      bySection,
+      byProject,
+      byNationality,
+      byGender,
+      byTitle,
+      byClass,
+      byDirect,
+      ageDistribution,
+      hiringTrend,
+      passportExpiryStats,
+      civilExpiryStats,
+      contractExpiryStats,
+      generatedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * Returns the complete HR Insights payload for all charts (Unfiltered).
    * @returns {Object} Response envelope
    */
   function getInsightsData() {
     return Response.wrap(() => {
       const employees = EmployeeRepository.getAll();
-      const total     = employees.length;
+      return Response.success(_computeInsightsPayload(employees));
+    });
+  }
 
-      // KPI - Top Level
-      const avgAge = employees.reduce((sum, e) => {
-        const age = parseFloat(e.age);
-        return isNaN(age) ? sum : sum + age;
-      }, 0) / (employees.filter(e => e.age).length || 1);
-
-      const kpis = {
-        totalEmployees: total,
-        averageAge:     Number(avgAge.toFixed(1)),
-        maleCount:      employees.filter(e => e.gender === 'Male').length,
-        femaleCount:    employees.filter(e => e.gender === 'Female').length,
-        directCount:    employees.filter(e => e.direct === 'Direct').length,
-        indirectCount:  employees.filter(e => e.direct === 'Indirect').length,
-      };
-
-      // Distribution Charts
-      const byDepartment  = _groupAndCount(employees, 'department');
-      const bySection     = _groupAndCount(employees, 'section');
-      const byProject     = _groupAndCount(employees, 'project');
-      const byNationality = _groupAndCount(employees, 'nationality');
-      const byGender      = _groupAndCount(employees, 'gender');
-      const byTitle       = _groupAndCount(employees, 'title');
-      const byClass       = _groupAndCount(employees, 'class');
-      const byDirect      = _groupAndCount(employees, 'direct');
-
-      // Trends & Demographics
-      const ageDistribution  = _ageDistribution(employees);
-      const hiringTrend      = _hiringTrend(employees);
-
-      // Document Expiry Status Charts
-      const passportExpiryStats = _expiryStatusSummary(employees, 'passportExp');
-      const civilExpiryStats    = _expiryStatusSummary(employees, 'civilExp');
-      const contractExpiryStats = _expiryStatusSummary(employees, 'contractExp');
-
-      return Response.success({
-        kpis,
-        byDepartment,
-        bySection,
-        byProject,
-        byNationality,
-        byGender,
-        byTitle,
-        byClass,
-        byDirect,
-        ageDistribution,
-        hiringTrend,
-        passportExpiryStats,
-        civilExpiryStats,
-        contractExpiryStats,
-        generatedAt: new Date().toISOString(),
-      });
+  /**
+   * Returns the HR Insights payload for filtered employees.
+   * @param {Object} filters
+   * @returns {Object} Response envelope
+   */
+  function getFilteredInsights(filters) {
+    return Response.wrap(() => {
+      const employees = EmployeeRepository.queryWithFilters(filters);
+      return Response.success(_computeInsightsPayload(employees), `${employees.length} employee(s) analyzed.`);
     });
   }
 
   return {
     getInsightsData,
+    getFilteredInsights,
   };
 })();

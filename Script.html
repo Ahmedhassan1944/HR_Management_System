@@ -2407,26 +2407,43 @@ const FilterModule = (() => {
     _setLoading(true);
 
     try {
-      const result = await _callServer('api_getFilteredEmployees', filters);
-      const employees = result ?? [];
-
-      // Update result count badge
-      const countEl = document.getElementById('fp-result-count');
-      if (countEl) countEl.textContent = employees.length;
-
-      // Update active indicator on toggle button
-      _updateActiveIndicator();
-
-      // Render into the current page view
       const page = AppState?.currentPage;
-      if (page === 'dashboard') {
-        DashboardModule.render(employees, AppState.documents);
-      } else if (page === 'insights') {
-        // Re-render insights using the filtered employee set
-        InsightsModule.renderFiltered?.(employees) ??
-          Toast.show('Filters Applied', `${employees.length} employee(s) matched.`, 'info');
-      } else if (page === 'employees') {
-        EmployeesModule.render(employees);
+      
+      // Handle HR Insights page specifically
+      if (page === 'insights') {
+        const payload = await _callServer('api_getFilteredInsights', filters);
+        
+        // Update result count badge
+        const countEl = document.getElementById('fp-result-count');
+        if (countEl) countEl.textContent = payload.kpis?.totalEmployees ?? 0;
+        
+        _updateActiveIndicator();
+        
+        // Render insights
+        if (typeof InsightsModule !== 'undefined' && InsightsModule.render) {
+          InsightsModule.render(payload);
+          Toast.show('Filters Applied', 'Insights data updated.', 'success');
+        } else {
+          Toast.show('Error', 'InsightsModule is not available.', 'error');
+        }
+      } 
+      // Handle Dashboard and Employees pages
+      else {
+        const result = await _callServer('api_getFilteredEmployees', filters);
+        const employees = result ?? [];
+
+        // Update result count badge
+        const countEl = document.getElementById('fp-result-count');
+        if (countEl) countEl.textContent = employees.length;
+
+        _updateActiveIndicator();
+
+        // Render into the current page view
+        if (page === 'dashboard') {
+          DashboardModule.render(employees, AppState.documents);
+        } else if (page === 'employees') {
+          EmployeesModule.render(employees);
+        }
       }
     } catch (err) {
       Toast.show('Filter Error', err?.message ?? 'Failed to apply filters.', 'error');

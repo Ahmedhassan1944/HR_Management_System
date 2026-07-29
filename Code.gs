@@ -97,6 +97,16 @@ function api_getInsightsData() {
   return InsightsService.getInsightsData();
 }
 
+/**
+ * Returns the HR Insights analytics payload for filtered employees.
+ * Called by: FilterModule (client)
+ * @param {Object} filters
+ * @returns {Object} Response envelope
+ */
+function api_getFilteredInsights(filters) {
+  return InsightsService.getFilteredInsights(filters);
+}
+
 // ============================================================
 //  SETTINGS API
 // ============================================================
