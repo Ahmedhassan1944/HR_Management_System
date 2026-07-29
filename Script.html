@@ -1533,12 +1533,13 @@ const InsightsModule = (() => {
 
   function _chartCard(canvasId, title, subtitle, height) {
     return `
-      <div class="chart-card">
+      <div class="chart-card" draggable="true" data-chart-id="${canvasId}" role="region" aria-label="${_esc(title)}">
         <div class="chart-card__header">
           <div>
             <div class="chart-card__title">${_esc(title)}</div>
             <div class="chart-card__subtitle">${_esc(subtitle)}</div>
           </div>
+          <div class="chart-card__drag-handle" aria-hidden="true" title="Drag to reorder">⠿</div>
         </div>
         <div class="chart-canvas-wrapper" style="height:${height}px;">
           <canvas id="${canvasId}" aria-label="${_esc(title)}" role="img"></canvas>
@@ -2511,6 +2512,7 @@ const FilterModule = (() => {
     }
   }
 
+
   function reset() {
     // Clear text / date / number inputs
     ['fp-search', 'fp-date-start', 'fp-date-end', 'fp-salary-min', 'fp-salary-max'].forEach(id => {
@@ -2730,5 +2732,168 @@ const FilterModule = (() => {
 
 // ── Wire FilterModule into _boot ────────────────────────────
 const _originalBoot = typeof _boot === 'function' ? _boot : null;
+
+
+/* ─────────────────────────────────────────────────────────────
+   DragDrop Module — chart card drag-and-drop reordering
+   ──────────────────────────────────────────────────────────── */
+const DragDrop = (() => {
+  'use strict';
+
+  const STORAGE_KEY = 'hr_insights_layout_v1';
+  let _dragSrc = null;
+
+  /**
+   * Attach drag-and-drop behaviour to all .charts-grid containers.
+   * Safe to call repeatedly (idempotent via flag attribute).
+   */
+  function init() {
+    document
+      .querySelectorAll('.charts-grid:not([data-dnd-init])')
+      .forEach(_initGrid);
+  }
+
+  /**
+   * Restore saved order from localStorage for a given grid,
+   * then attach listeners.
+   */
+  function _initGrid(grid) {
+    grid.setAttribute('data-dnd-init', '1');
+    grid.classList.add('charts-grid--droppable');
+
+    // Restore persisted order
+    const gridId = _getGridId(grid);
+    const saved  = _loadOrder(gridId);
+    if (saved?.length) _applyOrder(grid, saved);
+
+    // Wire each existing card inside this grid
+    grid.querySelectorAll('.chart-card[draggable="true"]').forEach(card => _wireCard(card));
+  }
+
+  /**
+   * Wire drag events onto a single card.
+   */
+  function _wireCard(card) {
+    card.addEventListener('dragstart', _onDragStart);
+    card.addEventListener('dragend',   _onDragEnd);
+    card.addEventListener('dragover',  _onDragOver);
+    card.addEventListener('dragleave', _onDragLeave);
+    card.addEventListener('drop',      _onDrop);
+  }
+
+  // ── Drag Event Handlers ─────────────────────────────────────
+
+  function _onDragStart(e) {
+    _dragSrc = this;
+    this.classList.add('chart-card--dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', this.dataset.chartId ?? '');
+  }
+
+  function _onDragEnd() {
+    _dragSrc = null;
+    document.querySelectorAll('.chart-card').forEach(c => {
+      c.classList.remove('chart-card--dragging', 'chart-card--drag-over');
+    });
+  }
+
+  function _onDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (_dragSrc && _dragSrc !== this) {
+      this.classList.add('chart-card--drag-over');
+    }
+    return false;
+  }
+
+  function _onDragLeave() {
+    this.classList.remove('chart-card--drag-over');
+  }
+
+  function _onDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.classList.remove('chart-card--drag-over');
+
+    if (!_dragSrc || _dragSrc === this) return;
+
+    const src    = _dragSrc;
+    const target = this;
+    const grid   = src.closest('.charts-grid');
+    const tgrid  = target.closest('.charts-grid');
+
+    // Only allow reordering within the same grid
+    if (!grid || grid !== tgrid) return;
+
+    // Insert src before or after target depending on relative position
+    const cards  = [...grid.querySelectorAll('.chart-card')];
+    const srcIdx = cards.indexOf(src);
+    const tgtIdx = cards.indexOf(target);
+
+    if (srcIdx < tgtIdx) {
+      grid.insertBefore(src, target.nextSibling);
+    } else {
+      grid.insertBefore(src, target);
+    }
+
+    // Persist new order
+    _saveOrder(grid);
+
+    return false;
+  }
+
+  // ── Persistence ─────────────────────────────────────────────
+
+  function _getGridId(grid) {
+    if (!grid.id) {
+      const grids = [...document.querySelectorAll('.charts-grid')];
+      grid.id = `charts-grid-${grids.indexOf(grid)}`;
+    }
+    return grid.id;
+  }
+
+  function _saveOrder(grid) {
+    try {
+      const gridId = _getGridId(grid);
+      const order  = [...grid.querySelectorAll('.chart-card[data-chart-id]')]
+                       .map(c => c.dataset.chartId);
+      const all    = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
+      all[gridId]  = order;
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+    } catch (_) { /* localStorage unavailable — silent */ }
+  }
+
+  function _loadOrder(gridId) {
+    try {
+      const all = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
+      return all[gridId] ?? null;
+    } catch (_) { return null; }
+  }
+
+  function _applyOrder(grid, order) {
+    const cardMap = {};
+    grid.querySelectorAll('.chart-card[data-chart-id]').forEach(c => {
+      cardMap[c.dataset.chartId] = c;
+    });
+    order.forEach(id => {
+      const card = cardMap[id];
+      if (card) grid.appendChild(card);
+    });
+  }
+
+  /** Reset all saved layouts */
+  function reset() {
+    try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
+    location.reload();
+  }
+
+  return { init, reset };
+})();
+
+// Auto-init: MutationObserver fires after InsightsModule.render() injects new grids
+(() => {
+  const _observer = new MutationObserver(() => DragDrop.init());
+  _observer.observe(document.body, { childList: true, subtree: true });
+})();
 
 </script>
