@@ -1432,6 +1432,7 @@ const InsightsModule = (() => {
     }
 
     const titleHeight = Math.max(600, (data.byTitle?.length || 0) * 32);
+    const deptHeight = Math.max(400, (data.byDepartment?.length || 0) * 32);
 
     container.innerHTML = `
       <div class="insights-layout">
@@ -1446,9 +1447,8 @@ const InsightsModule = (() => {
             ${_kpi('💼', 'Indirect',        data.kpis.indirectCount, 'info')}
           </div>
 
-          <!-- Row 1: Department & Project Distribution -->
+          <!-- Row 1: Project Distribution -->
           <div class="charts-grid charts-grid--2col mb-6">
-            ${_chartCard('chart-dept',    'Employees by Department', 'Department breakdown', 220)}
             ${_chartCard('chart-project', 'Employees by Project',    'Project / site allocation', 220)}
           </div>
 
@@ -1488,6 +1488,20 @@ const InsightsModule = (() => {
             <div class="chart-card__scroll-area">
               <div class="chart-canvas-wrapper" style="height:${titleHeight}px;">
                 <canvas id="chart-title" aria-label="Employees by Job Title" role="img"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <div class="chart-card h-100">
+            <div class="chart-card__header">
+              <div>
+                <div class="chart-card__title">Employees by Department</div>
+                <div class="chart-card__subtitle">Department breakdown</div>
+              </div>
+            </div>
+            <div class="chart-card__scroll-area">
+              <div class="chart-canvas-wrapper" style="height:${deptHeight}px;">
+                <canvas id="chart-dept" aria-label="Employees by Department" role="img"></canvas>
               </div>
             </div>
           </div>

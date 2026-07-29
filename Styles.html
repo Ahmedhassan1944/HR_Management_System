@@ -2179,6 +2179,9 @@ ul, ol { list-style: none; }
 .insights-layout__side {
   width: 380px;
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
 }
 
 .chart-card__scroll-area {
@@ -2252,6 +2255,14 @@ ul, ol { list-style: none; }
 .dnd-sortable-root .dnd-placeholder {
   flex: 1 1 calc(33.333% - var(--space-5));
   min-width: 280px; /* match previous grid column min-width */
+}
+
+/* Make the first two cards in the main area take 50% width */
+.dnd-sortable-root > .chart-card:nth-child(1),
+.dnd-sortable-root > .chart-card:nth-child(2),
+.dnd-sortable-root > .dnd-placeholder:nth-child(1),
+.dnd-sortable-root > .dnd-placeholder:nth-child(2) {
+  flex: 1 1 calc(50% - var(--space-5));
 }
 
 .dnd-placeholder {
