@@ -1445,57 +1445,6 @@ ul, ol { list-style: none; }
   width: 100%;
 }
 
-/* ── Draggable Chart Cards ── */
-.chart-card[draggable="true"] {
-  cursor: grab;
-  transition: box-shadow var(--transition-fast), transform var(--transition-fast), opacity var(--transition-fast);
-}
-
-.chart-card[draggable="true"]:active {
-  cursor: grabbing;
-}
-
-.chart-card__drag-handle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  color: var(--color-text-muted);
-  cursor: grab;
-  opacity: 0;
-  transition: opacity var(--transition-fast);
-  flex-shrink: 0;
-  border-radius: var(--radius-sm);
-  font-size: 14px;
-  user-select: none;
-}
-
-.chart-card:hover .chart-card__drag-handle {
-  opacity: 1;
-}
-
-.chart-card__drag-handle:hover {
-  background: var(--color-surface-alt);
-  color: var(--color-text-primary);
-}
-
-.chart-card--dragging {
-  opacity: 0.35;
-  box-shadow: none;
-  transform: scale(0.98);
-  border: 2px dashed var(--color-primary);
-}
-
-.chart-card--drag-over {
-  box-shadow: 0 0 0 2px var(--color-primary), var(--shadow-lg);
-  transform: scale(1.01);
-}
-
-.charts-grid--droppable {
-  position: relative;
-}
-
 /* ──────────────────────────────────────────────────────────────
    11. SETTINGS PAGE
    ─────────────────────────────────────────────────────────────── */
@@ -2249,6 +2198,67 @@ ul, ol { list-style: none; }
   .chart-card__scroll-area {
     max-height: 500px;
   }
+}
+
+/* ── Draggable Chart Cards & Sortable Layout ── */
+.chart-card[draggable="true"] {
+  cursor: grab;
+  transition: box-shadow var(--transition-fast), opacity var(--transition-fast);
+}
+
+.chart-card[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.chart-card__drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--color-text-muted);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity var(--transition-fast);
+  flex-shrink: 0;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  user-select: none;
+}
+
+.chart-card:hover .chart-card__drag-handle {
+  opacity: 1;
+}
+
+.chart-card__drag-handle:hover {
+  background: var(--color-surface-alt);
+  color: var(--color-text-primary);
+}
+
+.chart-card--dragging {
+  opacity: 0.4;
+  box-shadow: none !important;
+}
+
+.dnd-sortable-root {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin-bottom: var(--space-6);
+  width: 100%;
+}
+
+.dnd-sortable-root .chart-card,
+.dnd-sortable-root .dnd-placeholder {
+  flex: 1 1 calc(50% - var(--space-5));
+  min-width: 380px; /* match previous grid column min-width */
+}
+
+.dnd-placeholder {
+  background: var(--color-surface-alt);
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-lg);
+  box-sizing: border-box;
 }
 
 </style>

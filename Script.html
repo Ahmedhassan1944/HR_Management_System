@@ -2512,7 +2512,6 @@ const FilterModule = (() => {
     }
   }
 
-
   function reset() {
     // Clear text / date / number inputs
     ['fp-search', 'fp-date-start', 'fp-date-end', 'fp-salary-min', 'fp-salary-max'].forEach(id => {
@@ -2733,155 +2732,187 @@ const FilterModule = (() => {
 // ── Wire FilterModule into _boot ────────────────────────────
 const _originalBoot = typeof _boot === 'function' ? _boot : null;
 
-
 /* ─────────────────────────────────────────────────────────────
-   DragDrop Module — chart card drag-and-drop reordering
+   DragDrop Module — true sortable with live placeholder
+   Cards can be freely moved to any position across all rows.
    ──────────────────────────────────────────────────────────── */
 const DragDrop = (() => {
   'use strict';
 
-  const STORAGE_KEY = 'hr_insights_layout_v1';
-  let _dragSrc = null;
+  const STORAGE_KEY = 'hr_insights_layout_v2';
+
+  let _dragSrc      = null;  // the card being dragged
+  let _placeholder  = null;  // the ghost "gap" element
+  let _sortableRoot = null;  // the flat sortable container
+
+  // ── Bootstrap ────────────────────────────────────────────────
 
   /**
-   * Attach drag-and-drop behaviour to all .charts-grid containers.
-   * Safe to call repeatedly (idempotent via flag attribute).
+   * Called after InsightsModule injects its HTML.
+   * Wraps all .chart-card elements into a single flat sortable container
+   * so cards can move freely across every row.
    */
   function init() {
-    document
-      .querySelectorAll('.charts-grid:not([data-dnd-init])')
-      .forEach(_initGrid);
+    const insightsContent = document.getElementById('insightsContent');
+    if (!insightsContent) return;
+
+    // Already initialised for this render cycle — skip
+    if (insightsContent.querySelector('.dnd-sortable-root')) return;
+
+    // Collect all chart cards rendered by InsightsModule
+    const cards = [...insightsContent.querySelectorAll('.chart-card[data-chart-id]')];
+    if (!cards.length) return;
+
+    // Build the flat sortable grid that will hold every card
+    const root = document.createElement('div');
+    root.className = 'dnd-sortable-root';
+    root.setAttribute('role', 'list');
+
+    // Restore persisted order if available
+    const savedOrder = _loadOrder();
+    if (savedOrder?.length) {
+      const cardMap = Object.fromEntries(cards.map(c => [c.dataset.chartId, c]));
+      const ordered = savedOrder.map(id => cardMap[id]).filter(Boolean);
+      // Append any new cards not yet in saved order
+      cards.forEach(c => { if (!savedOrder.includes(c.dataset.chartId)) ordered.push(c); });
+      ordered.forEach(c => root.appendChild(c));
+    } else {
+      cards.forEach(c => root.appendChild(c));
+    }
+
+    // Detach empty grid rows (they may have become empty wrappers)
+    insightsContent.querySelectorAll('.charts-grid').forEach(g => {
+      if (!g.querySelector('.chart-card')) g.remove();
+    });
+
+    // Wire drag events on each card
+    root.querySelectorAll('.chart-card[data-chart-id]').forEach(_wireCard);
+
+    // Insert the sortable root before whatever is left in insightsContent
+    insightsContent.prepend(root);
+    _sortableRoot = root;
   }
 
-  /**
-   * Restore saved order from localStorage for a given grid,
-   * then attach listeners.
-   */
-  function _initGrid(grid) {
-    grid.setAttribute('data-dnd-init', '1');
-    grid.classList.add('charts-grid--droppable');
+  // ── Card wiring ──────────────────────────────────────────────
 
-    // Restore persisted order
-    const gridId = _getGridId(grid);
-    const saved  = _loadOrder(gridId);
-    if (saved?.length) _applyOrder(grid, saved);
-
-    // Wire each existing card inside this grid
-    grid.querySelectorAll('.chart-card[draggable="true"]').forEach(card => _wireCard(card));
-  }
-
-  /**
-   * Wire drag events onto a single card.
-   */
   function _wireCard(card) {
-    card.addEventListener('dragstart', _onDragStart);
-    card.addEventListener('dragend',   _onDragEnd);
-    card.addEventListener('dragover',  _onDragOver);
-    card.addEventListener('dragleave', _onDragLeave);
-    card.addEventListener('drop',      _onDrop);
+    card.setAttribute('role', 'listitem');
+    card.addEventListener('dragstart',  _onDragStart);
+    card.addEventListener('dragend',    _onDragEnd);
   }
 
-  // ── Drag Event Handlers ─────────────────────────────────────
+  // ── Drag event handlers ──────────────────────────────────────
 
   function _onDragStart(e) {
     _dragSrc = this;
-    this.classList.add('chart-card--dragging');
+
+    // Defer visual so browser captures the non-faded snapshot
+    requestAnimationFrame(() => this.classList.add('chart-card--dragging'));
+
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', this.dataset.chartId ?? '');
+
+    // Create a placeholder the same size as the dragged card
+    _placeholder = document.createElement('div');
+    _placeholder.className = 'dnd-placeholder';
+    _placeholder.style.width  = `${this.offsetWidth}px`;
+    _placeholder.style.height = `${this.offsetHeight}px`;
+
+    // Global listeners while dragging
+    document.addEventListener('dragover',  _onDocDragOver,  { passive: false });
+    document.addEventListener('drop',      _onDocDrop);
+    document.addEventListener('dragenter', _onDocDragEnter, { passive: false });
   }
 
   function _onDragEnd() {
-    _dragSrc = null;
-    document.querySelectorAll('.chart-card').forEach(c => {
-      c.classList.remove('chart-card--dragging', 'chart-card--drag-over');
-    });
+    if (_dragSrc) _dragSrc.classList.remove('chart-card--dragging');
+    _placeholder?.remove();
+    _placeholder  = null;
+    _dragSrc      = null;
+
+    document.removeEventListener('dragover',  _onDocDragOver);
+    document.removeEventListener('drop',      _onDocDrop);
+    document.removeEventListener('dragenter', _onDocDragEnter);
   }
 
-  function _onDragOver(e) {
+  // ── Global drag-over — moves the placeholder ─────────────────
+
+  function _onDocDragEnter(e) { e.preventDefault(); }
+
+  function _onDocDragOver(e) {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    if (_dragSrc && _dragSrc !== this) {
-      this.classList.add('chart-card--drag-over');
-    }
-    return false;
-  }
 
-  function _onDragLeave() {
-    this.classList.remove('chart-card--drag-over');
-  }
+    if (!_dragSrc || !_sortableRoot || !_placeholder) return;
 
-  function _onDrop(e) {
-    e.preventDefault();
-    e.stopPropagation();
-    this.classList.remove('chart-card--drag-over');
+    // Find which card the cursor is over (ignoring the source and placeholder)
+    const target = _cardUnderCursor(e.clientX, e.clientY);
+    if (!target || target === _dragSrc) return;
 
-    if (!_dragSrc || _dragSrc === this) return;
+    // Determine if cursor is in the left or right half of the target
+    const rect   = target.getBoundingClientRect();
+    const midX   = rect.left + rect.width  / 2;
+    const midY   = rect.top  + rect.height / 2;
 
-    const src    = _dragSrc;
-    const target = this;
-    const grid   = src.closest('.charts-grid');
-    const tgrid  = target.closest('.charts-grid');
+    // Use horizontal midpoint primarily (grid layout), fallback to vertical
+    const insertBefore = (e.clientX < midX) || (Math.abs(e.clientX - midX) < 10 && e.clientY < midY);
 
-    // Only allow reordering within the same grid
-    if (!grid || grid !== tgrid) return;
-
-    // Insert src before or after target depending on relative position
-    const cards  = [...grid.querySelectorAll('.chart-card')];
-    const srcIdx = cards.indexOf(src);
-    const tgtIdx = cards.indexOf(target);
-
-    if (srcIdx < tgtIdx) {
-      grid.insertBefore(src, target.nextSibling);
+    if (insertBefore) {
+      _sortableRoot.insertBefore(_placeholder, target);
     } else {
-      grid.insertBefore(src, target);
+      _sortableRoot.insertBefore(_placeholder, target.nextSibling);
     }
-
-    // Persist new order
-    _saveOrder(grid);
-
-    return false;
   }
 
-  // ── Persistence ─────────────────────────────────────────────
+  // ── Drop — commit position ───────────────────────────────────
 
-  function _getGridId(grid) {
-    if (!grid.id) {
-      const grids = [...document.querySelectorAll('.charts-grid')];
-      grid.id = `charts-grid-${grids.indexOf(grid)}`;
-    }
-    return grid.id;
+  function _onDocDrop(e) {
+    e.preventDefault();
+    if (!_dragSrc || !_placeholder || !_sortableRoot) return;
+
+    // Insert the card where the placeholder currently sits
+    _sortableRoot.insertBefore(_dragSrc, _placeholder);
+    _placeholder.remove();
+    _placeholder = null;
+    _dragSrc.classList.remove('chart-card--dragging');
+
+    _saveOrder();
   }
 
-  function _saveOrder(grid) {
+  // ── Helpers ──────────────────────────────────────────────────
+
+  /**
+   * Returns the chart-card element directly under the cursor,
+   * skipping the dragging card and the placeholder.
+   */
+  function _cardUnderCursor(x, y) {
+    const elements = document.elementsFromPoint(x, y);
+    return elements.find(el =>
+      el.classList.contains('chart-card') &&
+      el !== _dragSrc &&
+      el !== _placeholder
+    ) ?? null;
+  }
+
+  // ── Persistence ──────────────────────────────────────────────
+
+  function _saveOrder() {
     try {
-      const gridId = _getGridId(grid);
-      const order  = [...grid.querySelectorAll('.chart-card[data-chart-id]')]
-                       .map(c => c.dataset.chartId);
-      const all    = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
-      all[gridId]  = order;
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
-    } catch (_) { /* localStorage unavailable — silent */ }
+      if (!_sortableRoot) return;
+      const order = [..._sortableRoot.querySelectorAll('.chart-card[data-chart-id]')]
+                      .map(c => c.dataset.chartId);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(order));
+    } catch (_) { /* unavailable — silent */ }
   }
 
-  function _loadOrder(gridId) {
+  function _loadOrder() {
     try {
-      const all = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
-      return all[gridId] ?? null;
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
     } catch (_) { return null; }
   }
 
-  function _applyOrder(grid, order) {
-    const cardMap = {};
-    grid.querySelectorAll('.chart-card[data-chart-id]').forEach(c => {
-      cardMap[c.dataset.chartId] = c;
-    });
-    order.forEach(id => {
-      const card = cardMap[id];
-      if (card) grid.appendChild(card);
-    });
-  }
-
-  /** Reset all saved layouts */
+  /** Reset saved layout and reload */
   function reset() {
     try { localStorage.removeItem(STORAGE_KEY); } catch (_) {}
     location.reload();
@@ -2890,9 +2921,14 @@ const DragDrop = (() => {
   return { init, reset };
 })();
 
-// Auto-init: MutationObserver fires after InsightsModule.render() injects new grids
+// Auto-init via MutationObserver — fires after InsightsModule.render() injects cards
 (() => {
-  const _observer = new MutationObserver(() => DragDrop.init());
+  let _timer = null;
+  const _observer = new MutationObserver(() => {
+    // Debounce: wait until DOM settles before initialising
+    clearTimeout(_timer);
+    _timer = setTimeout(() => DragDrop.init(), 80);
+  });
   _observer.observe(document.body, { childList: true, subtree: true });
 })();
 
