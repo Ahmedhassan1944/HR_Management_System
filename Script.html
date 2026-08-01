@@ -1470,10 +1470,6 @@ const InsightsModule = (() => {
             <div class="kpi-grid" role="list">
               ${_kpi('👥', 'Total Employees', data.kpis.totalEmployees,       'primary')}
               ${_kpi('📊', 'Average Age',     data.kpis.averageAge + ' yrs',  'info')}
-              ${_kpi('👨', 'Male',           data.kpis.maleCount,             'primary')}
-              ${_kpi('👩', 'Female',         data.kpis.femaleCount,           'success')}
-              ${_kpi('🔧', 'Direct',         data.kpis.directCount,           'warning')}
-              ${_kpi('💼', 'Indirect',       data.kpis.indirectCount,         'info')}
             </div>
           </div>
 
@@ -2227,6 +2223,7 @@ const FilterModule = (() => {
     // Wire action buttons
     document.getElementById('fp-apply')?.addEventListener('click', () => applyFilters());
     document.getElementById('fp-reset')?.addEventListener('click', reset);
+    document.getElementById('insightsResetFiltersBtn')?.addEventListener('click', reset);
     document.getElementById('fp-save')?.addEventListener('click', _savePreset);
     document.getElementById('fp-saved')?.addEventListener('change', _onPresetChange);
 
@@ -2469,10 +2466,24 @@ const FilterModule = (() => {
     const filters = collectFilterValues();
     const btn = document.getElementById('filterToggleBtn');
     if (!btn) return;
-    if (_hasActiveFilters(filters)) {
+
+    const hasActive = _hasActiveFilters(filters);
+
+    // Toggle dot on the filter icon button
+    if (hasActive) {
       btn.classList.add('fp-open-btn--active');
     } else {
       btn.classList.remove('fp-open-btn--active');
+    }
+
+    // Show / hide the Reset Filters button in the page header
+    const resetBtn = document.getElementById('insightsResetFiltersBtn');
+    if (resetBtn) {
+      if (hasActive) {
+        resetBtn.removeAttribute('hidden');
+      } else {
+        resetBtn.setAttribute('hidden', '');
+      }
     }
   }
 
