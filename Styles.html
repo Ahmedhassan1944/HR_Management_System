@@ -1413,6 +1413,7 @@ ul, ol { list-style: none; }
 
 .charts-grid--2col { grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); }
 .charts-grid--3col { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.charts-grid--4col { grid-template-columns: repeat(4, 1fr); }
 
 .chart-card {
   background: var(--color-surface);
@@ -2165,28 +2166,8 @@ ul, ol { list-style: none; }
 }
 
 /* ── Insights Layout ── */
-.insights-layout {
-  display: flex;
-  gap: var(--space-6);
-  align-items: flex-start;
-}
-
-.insights-layout__main {
-  flex: 1;
-  min-width: 0;
-}
-
-.insights-layout__side {
-  width: 760px;
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: row;
-  gap: var(--space-6);
-}
-
-.insights-layout__side > .chart-card {
-  flex: 1;
-  width: 50%;
+.insights-page {
+  display: block;
 }
 
 .chart-card__scroll-area {
@@ -2196,21 +2177,43 @@ ul, ol { list-style: none; }
   scrollbar-color: rgba(0,0,0,0.1) transparent;
 }
 
+/* ── Insights Bottom Section (KPIs + Bar Charts) ── */
+.insights-bottom {
+  display: flex;
+  gap: var(--space-6);
+  align-items: flex-start;
+  margin-top: var(--space-2);
+}
+
+.insights-bottom__kpis {
+  flex: 1;
+  min-width: 0;
+}
+
+.insights-bottom__bars {
+  display: flex;
+  gap: var(--space-6);
+  flex-shrink: 0;
+  width: 760px;
+}
+
+.insights-bottom__bars .chart-card {
+  flex: 1;
+  min-width: 0;
+}
+
 @media (max-width: 1400px) {
-  .insights-layout__side {
-    width: 380px;
+  .insights-bottom__bars {
+    width: 400px;
     flex-direction: column;
-  }
-  .insights-layout__side > .chart-card {
-    width: 100%;
   }
 }
 
 @media (max-width: 1024px) {
-  .insights-layout {
+  .insights-bottom {
     flex-direction: column;
   }
-  .insights-layout__side {
+  .insights-bottom__bars {
     width: 100%;
   }
   .chart-card__scroll-area {
