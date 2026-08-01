@@ -1435,22 +1435,22 @@ const InsightsModule = (() => {
     const deptHeight = Math.max(400, (data.byDepartment?.length || 0) * 32);
 
     container.innerHTML = `
-      <div class="insights-page">
+      <div class="insights-full-layout">
 
-        <!-- Row 1: Age Distribution + Project -->
+        <!-- Row 1: Age Distribution + Employees by Project -->
         <div class="charts-grid charts-grid--2col mb-6">
           ${_chartCard('chart-age',     'Age Distribution',      'Headcount by age group',    240)}
           ${_chartCard('chart-project', 'Employees by Project',  'Project / site allocation', 240)}
         </div>
 
-        <!-- Row 2: Donut Charts — Nationality, Gender, Classification -->
+        <!-- Row 2: Nationality + Gender + Classification (3 Donuts) -->
         <div class="charts-grid charts-grid--3col mb-6">
-          ${_chartCard('chart-nationality', 'Employees by Nationality',  'Nationality distribution',  240)}
-          ${_chartCard('chart-gender',      'Gender Breakdown',           'Male vs Female',            240)}
-          ${_chartCard('chart-class',       'Employment Classification',  'Engineering vs Other',      240)}
+          ${_chartCard('chart-nationality', 'Employees by Nationality',  'Nationality distribution', 240)}
+          ${_chartCard('chart-gender',      'Gender Breakdown',           'Male vs Female',           240)}
+          ${_chartCard('chart-class',       'Employment Classification',  'Direct vs Indirect',       240)}
         </div>
 
-        <!-- Row 3: Document Expiry Status — Civil first -->
+        <!-- Row 3: Civil ID Expiry + Passport Expiry + Contract Expiry -->
         <div class="charts-grid charts-grid--3col mb-6">
           ${_chartCard('chart-civil-expiry',    'Civil ID Expiry Status',  'Current civil ID validity',  220)}
           ${_chartCard('chart-passport-expiry', 'Passport Expiry Status',  'Current passport validity',  220)}
@@ -1462,26 +1462,28 @@ const InsightsModule = (() => {
           ${_chartCard('chart-hiring', 'Hiring Trend', 'New hires by month', 260)}
         </div>
 
-        <!-- Bottom: KPI Cards + Bar Charts -->
+        <!-- Row 5: KPIs (left) + Job Title + Department (right) -->
         <div class="insights-bottom">
+
           <div class="insights-bottom__kpis">
             <div class="kpi-grid" role="list">
-              ${_kpi('👥', 'Total Employees', data.kpis.totalEmployees, 'primary')}
-              ${_kpi('📊', 'Average Age',     data.kpis.averageAge + ' yrs', 'info')}
-              ${_kpi('👨', 'Male',           data.kpis.maleCount, 'primary')}
-              ${_kpi('👩', 'Female',         data.kpis.femaleCount, 'success')}
-              ${_kpi('🔧', 'Direct',         data.kpis.directCount, 'warning')}
-              ${_kpi('💼', 'Indirect',       data.kpis.indirectCount, 'info')}
+              ${_kpi('👥', 'Total Employees', data.kpis.totalEmployees,       'primary')}
+              ${_kpi('📊', 'Average Age',     data.kpis.averageAge + ' yrs',  'info')}
+              ${_kpi('👨', 'Male',           data.kpis.maleCount,             'primary')}
+              ${_kpi('👩', 'Female',         data.kpis.femaleCount,           'success')}
+              ${_kpi('🔧', 'Direct',         data.kpis.directCount,           'warning')}
+              ${_kpi('💼', 'Indirect',       data.kpis.indirectCount,         'info')}
             </div>
           </div>
-          <div class="insights-bottom__bars">
-            <div class="chart-card" draggable="true" data-chart-id="chart-title" role="region" aria-label="Employees by Job Title">
+
+          <div class="insights-bottom__charts">
+
+            <div class="chart-card">
               <div class="chart-card__header">
                 <div>
                   <div class="chart-card__title">Employees by Job Title</div>
                   <div class="chart-card__subtitle">Top job titles</div>
                 </div>
-                <div class="chart-card__drag-handle" aria-hidden="true" title="Drag to reorder">⠿</div>
               </div>
               <div class="chart-card__scroll-area">
                 <div class="chart-canvas-wrapper" style="height:${titleHeight}px;">
@@ -1489,13 +1491,13 @@ const InsightsModule = (() => {
                 </div>
               </div>
             </div>
-            <div class="chart-card" draggable="true" data-chart-id="chart-dept" role="region" aria-label="Employees by Department">
+
+            <div class="chart-card">
               <div class="chart-card__header">
                 <div>
                   <div class="chart-card__title">Employees by Department</div>
                   <div class="chart-card__subtitle">Department breakdown</div>
                 </div>
-                <div class="chart-card__drag-handle" aria-hidden="true" title="Drag to reorder">⠿</div>
               </div>
               <div class="chart-card__scroll-area">
                 <div class="chart-canvas-wrapper" style="height:${deptHeight}px;">
@@ -1503,6 +1505,7 @@ const InsightsModule = (() => {
                 </div>
               </div>
             </div>
+
           </div>
         </div>
 

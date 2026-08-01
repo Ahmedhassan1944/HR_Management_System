@@ -2166,8 +2166,9 @@ ul, ol { list-style: none; }
 }
 
 /* ── Insights Layout ── */
-.insights-page {
+.insights-full-layout {
   display: block;
+  width: 100%;
 }
 
 .chart-card__scroll-area {
@@ -2177,35 +2178,46 @@ ul, ol { list-style: none; }
   scrollbar-color: rgba(0,0,0,0.1) transparent;
 }
 
-/* ── Insights Bottom Section (KPIs + Bar Charts) ── */
+/* ── Bottom section: KPIs left, Job Title + Department right ── */
 .insights-bottom {
   display: flex;
   gap: var(--space-6);
   align-items: flex-start;
-  margin-top: var(--space-2);
+  margin-top: var(--space-6);
 }
 
 .insights-bottom__kpis {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
 }
 
-.insights-bottom__bars {
+.insights-bottom__kpis .kpi-grid {
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  margin-bottom: 0;
+}
+
+.insights-bottom__charts {
   display: flex;
+  flex-direction: row;
   gap: var(--space-6);
-  flex-shrink: 0;
+  flex: 0 0 760px;
   width: 760px;
 }
 
-.insights-bottom__bars .chart-card {
+.insights-bottom__charts > .chart-card {
   flex: 1;
-  min-width: 0;
+  width: 50%;
 }
 
+/* Responsive — narrow screens */
 @media (max-width: 1400px) {
-  .insights-bottom__bars {
-    width: 400px;
+  .insights-bottom__charts {
+    flex: 0 0 380px;
+    width: 380px;
     flex-direction: column;
+  }
+  .insights-bottom__charts > .chart-card {
+    width: 100%;
   }
 }
 
@@ -2213,11 +2225,19 @@ ul, ol { list-style: none; }
   .insights-bottom {
     flex-direction: column;
   }
-  .insights-bottom__bars {
+  .insights-bottom__charts {
     width: 100%;
+    flex: none;
+    flex-direction: row;
   }
   .chart-card__scroll-area {
     max-height: 500px;
+  }
+}
+
+@media (max-width: 640px) {
+  .insights-bottom__charts {
+    flex-direction: column;
   }
 }
 
