@@ -1415,6 +1415,14 @@ ul, ol { list-style: none; }
 .charts-grid--3col { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
 .charts-grid--4col { grid-template-columns: repeat(4, 1fr); }
 
+@media (max-width: 900px) {
+  .charts-grid--4col { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 600px) {
+  .charts-grid--4col { grid-template-columns: 1fr; }
+}
+
 .chart-card {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -2291,16 +2299,45 @@ ul, ol { list-style: none; }
 
 .dnd-sortable-root .chart-card,
 .dnd-sortable-root .dnd-placeholder {
-  flex: 1 1 calc(33.333% - var(--space-5));
-  min-width: 280px; /* match previous grid column min-width */
+  flex: 1 1 100%;
+  min-width: 280px;
 }
 
-/* Make the first two cards in the main area take 50% width */
+/* Row 1: Age & Project (2 columns) */
 .dnd-sortable-root > .chart-card:nth-child(1),
 .dnd-sortable-root > .chart-card:nth-child(2),
 .dnd-sortable-root > .dnd-placeholder:nth-child(1),
 .dnd-sortable-root > .dnd-placeholder:nth-child(2) {
   flex: 1 1 calc(50% - var(--space-5));
+}
+
+/* Row 2: 4 Donuts (4 columns) */
+.dnd-sortable-root > .chart-card:nth-child(3),
+.dnd-sortable-root > .chart-card:nth-child(4),
+.dnd-sortable-root > .chart-card:nth-child(5),
+.dnd-sortable-root > .chart-card:nth-child(6),
+.dnd-sortable-root > .dnd-placeholder:nth-child(3),
+.dnd-sortable-root > .dnd-placeholder:nth-child(4),
+.dnd-sortable-root > .dnd-placeholder:nth-child(5),
+.dnd-sortable-root > .dnd-placeholder:nth-child(6) {
+  flex: 1 1 calc(25% - var(--space-5));
+  min-width: 200px; /* allow 4 to fit side-by-side on smaller screens */
+}
+
+/* Row 3: Expiry (3 columns) */
+.dnd-sortable-root > .chart-card:nth-child(7),
+.dnd-sortable-root > .chart-card:nth-child(8),
+.dnd-sortable-root > .chart-card:nth-child(9),
+.dnd-sortable-root > .dnd-placeholder:nth-child(7),
+.dnd-sortable-root > .dnd-placeholder:nth-child(8),
+.dnd-sortable-root > .dnd-placeholder:nth-child(9) {
+  flex: 1 1 calc(33.333% - var(--space-5));
+}
+
+/* Row 4: Hiring Trend (Full width) */
+.dnd-sortable-root > .chart-card:nth-child(10),
+.dnd-sortable-root > .dnd-placeholder:nth-child(10) {
+  flex: 1 1 100%;
 }
 
 .dnd-placeholder {

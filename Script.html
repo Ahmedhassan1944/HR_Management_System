@@ -1443,11 +1443,12 @@ const InsightsModule = (() => {
           ${_chartCard('chart-project', 'Employees by Project',  'Project / site allocation', 240)}
         </div>
 
-        <!-- Row 2: Nationality + Gender + Classification (3 Donuts) -->
-        <div class="charts-grid charts-grid--3col mb-6">
-          ${_chartCard('chart-nationality', 'Employees by Nationality',  'Nationality distribution', 240)}
-          ${_chartCard('chart-gender',      'Gender Breakdown',           'Male vs Female',           240)}
-          ${_chartCard('chart-class',       'Employment Classification',  'Direct vs Indirect',       240)}
+        <!-- Row 2: Nationality + Gender + Classification + Direct/Indirect (4 Donuts) -->
+        <div class="charts-grid charts-grid--4col mb-6">
+          ${_chartCard('chart-nationality', 'Employees by Nationality',  'Nationality distribution',   240)}
+          ${_chartCard('chart-gender',      'Gender Breakdown',           'Male vs Female',             240)}
+          ${_chartCard('chart-class',       'Employment Classification',  'Engineering vs Other',       240)}
+          ${_chartCard('chart-direct',      'Direct / Indirect',          'Workforce type breakdown',   240)}
         </div>
 
         <!-- Row 3: Civil ID Expiry + Passport Expiry + Contract Expiry -->
@@ -1528,6 +1529,7 @@ const InsightsModule = (() => {
     Charts.donut('chart-nationality',     data.byNationality,  crossFilter('fp-nationality'));
     Charts.donut('chart-gender',          data.byGender,       crossFilter('fp-gender'));
     Charts.donut('chart-class',           data.byClass,        crossFilter('fp-class'));
+    Charts.donut('chart-direct',          data.byDirect,       crossFilter('fp-direct'));
     // Row 3 — Expiry (Civil first)
     Charts.expiryStatus('chart-civil-expiry',     data.civilExpiryStats);
     Charts.expiryStatus('chart-passport-expiry',  data.passportExpiryStats);
