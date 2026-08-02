@@ -2180,10 +2180,18 @@ ul, ol { list-style: none; }
 }
 
 .chart-card__scroll-area {
-  max-height: calc(100vh - 200px);
   overflow-y: auto;
+  overflow-x: auto;
   scrollbar-width: thin;
   scrollbar-color: rgba(0,0,0,0.1) transparent;
+}
+.chart-card__scroll-area::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.chart-card__scroll-area::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.1);
+  border-radius: 4px;
 }
 
 /* ── Bottom section: Job Title + Department (70/30) ── */

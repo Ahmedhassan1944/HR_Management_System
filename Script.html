@@ -714,7 +714,7 @@ const Charts = (() => {
           y: { 
             grid: { display: false },
             afterFit: function(axis) {
-              axis.width = 160;                 // ensure long labels are not truncated
+              axis.width = 220;                 // ensure long labels are not truncated
             }
           },
         },
@@ -1555,8 +1555,8 @@ const InsightsModule = (() => {
 
         <!-- Row 5: Job Title (70%) + Department (30%) -->
         <div class="insights-bottom mb-6">
-          ${_chartCard('chart-title', 'Employees by Job Title', 'Top job titles', 600)}
-          ${_chartCard('chart-dept',  'Employees by Department', 'Department breakdown', 600)}
+          ${_scrollableChartCard('chart-title', 'Employees by Job Title', 'Top job titles', titleHeight, 450)}
+          ${_scrollableChartCard('chart-dept',  'Employees by Department', 'Department breakdown', deptHeight, 450)}
         </div>
 
       </div>
@@ -1616,6 +1616,25 @@ const InsightsModule = (() => {
         </div>
         <div class="chart-canvas-wrapper" style="height:${height}px;">
           <canvas id="${canvasId}" aria-label="${_esc(title)}" role="img"></canvas>
+        </div>
+      </div>
+    `;
+  }
+
+  function _scrollableChartCard(canvasId, title, subtitle, innerHeight, containerHeight = 450) {
+    return `
+      <div class="chart-card" draggable="true" data-chart-id="${canvasId}" role="region" aria-label="${_esc(title)}">
+        <div class="chart-card__header">
+          <div>
+            <div class="chart-card__title">${_esc(title)}</div>
+            <div class="chart-card__subtitle">${_esc(subtitle)}</div>
+          </div>
+          <div class="chart-card__drag-handle" aria-hidden="true" title="Drag to reorder">⠿</div>
+        </div>
+        <div class="chart-card__scroll-area" style="height:${containerHeight}px;">
+          <div class="chart-canvas-wrapper" style="height:${innerHeight}px;">
+            <canvas id="${canvasId}" aria-label="${_esc(title)}" role="img"></canvas>
+          </div>
         </div>
       </div>
     `;
