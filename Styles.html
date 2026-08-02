@@ -2186,66 +2186,31 @@ ul, ol { list-style: none; }
   scrollbar-color: rgba(0,0,0,0.1) transparent;
 }
 
-/* ── Bottom section: KPIs left, Job Title + Department right ── */
+/* ── Bottom section: Job Title + Department (70/30) ── */
 .insights-bottom {
   display: flex;
   gap: var(--space-6);
-  align-items: flex-start;
-  margin-top: var(--space-6);
+  width: 100%;
 }
 
-.insights-bottom__kpis {
-  flex: 1 1 auto;
-  min-width: 0;
+.insights-bottom > .chart-card:first-child {
+  flex: 0 0 calc(70% - var(--space-6) / 2);
+  max-width: calc(70% - var(--space-6) / 2);
 }
 
-.insights-bottom__kpis .kpi-grid {
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  margin-bottom: 0;
+.insights-bottom > .chart-card:last-child {
+  flex: 0 0 calc(30% - var(--space-6) / 2);
+  max-width: calc(30% - var(--space-6) / 2);
 }
 
-.insights-bottom__charts {
-  display: flex;
-  flex-direction: row;
-  gap: var(--space-6);
-  flex: 0 0 760px;
-  width: 760px;
-}
-
-.insights-bottom__charts > .chart-card {
-  flex: 1;
-  width: 50%;
-}
-
-/* Responsive — narrow screens */
-@media (max-width: 1400px) {
-  .insights-bottom__charts {
-    flex: 0 0 380px;
-    width: 380px;
-    flex-direction: column;
-  }
-  .insights-bottom__charts > .chart-card {
-    width: 100%;
-  }
-}
-
-@media (max-width: 1024px) {
+@media (max-width: 900px) {
   .insights-bottom {
     flex-direction: column;
   }
-  .insights-bottom__charts {
-    width: 100%;
-    flex: none;
-    flex-direction: row;
-  }
-  .chart-card__scroll-area {
-    max-height: 500px;
-  }
-}
-
-@media (max-width: 640px) {
-  .insights-bottom__charts {
-    flex-direction: column;
+  .insights-bottom > .chart-card:first-child,
+  .insights-bottom > .chart-card:last-child {
+    flex: 0 0 100%;
+    max-width: 100%;
   }
 }
 
@@ -2338,6 +2303,17 @@ ul, ol { list-style: none; }
 .dnd-sortable-root > .chart-card:nth-child(10),
 .dnd-sortable-root > .dnd-placeholder:nth-child(10) {
   flex: 1 1 100%;
+}
+
+/* Row 5: Job Title (70%) + Department (30%) */
+.dnd-sortable-root > .chart-card:nth-child(11),
+.dnd-sortable-root > .dnd-placeholder:nth-child(11) {
+  flex: 1 1 calc(70% - var(--space-5));
+}
+
+.dnd-sortable-root > .chart-card:nth-child(12),
+.dnd-sortable-root > .dnd-placeholder:nth-child(12) {
+  flex: 1 1 calc(30% - var(--space-5));
 }
 
 .dnd-placeholder {

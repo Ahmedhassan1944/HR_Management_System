@@ -711,7 +711,12 @@ const Charts = (() => {
             ticks: { precision: 0 },
             grace: '15%',                       // extend X axis 15% beyond data max
           },
-          y: { grid: { display: false } },
+          y: { 
+            grid: { display: false },
+            afterFit: function(axis) {
+              axis.width = 160;                 // ensure long labels are not truncated
+            }
+          },
         },
         onClick: (e, elements, chart) => {
           if (onClickHandler && elements.length > 0) {
@@ -1548,47 +1553,10 @@ const InsightsModule = (() => {
           ${_chartCard('chart-hiring', 'Hiring Trend', 'New hires by month', 260)}
         </div>
 
-        <!-- Row 5: KPIs (left) + Job Title + Department (right) -->
-        <div class="insights-bottom">
-
-          <div class="insights-bottom__kpis">
-            <div class="kpi-grid" role="list">
-              ${_kpi('👥', 'Total Employees', data.kpis.totalEmployees,       'primary')}
-              ${_kpi('📊', 'Average Age',     data.kpis.averageAge + ' yrs',  'info')}
-            </div>
-          </div>
-
-          <div class="insights-bottom__charts">
-
-            <div class="chart-card">
-              <div class="chart-card__header">
-                <div>
-                  <div class="chart-card__title">Employees by Job Title</div>
-                  <div class="chart-card__subtitle">Top job titles</div>
-                </div>
-              </div>
-              <div class="chart-card__scroll-area">
-                <div class="chart-canvas-wrapper" style="height:${titleHeight}px;">
-                  <canvas id="chart-title" aria-label="Employees by Job Title" role="img"></canvas>
-                </div>
-              </div>
-            </div>
-
-            <div class="chart-card">
-              <div class="chart-card__header">
-                <div>
-                  <div class="chart-card__title">Employees by Department</div>
-                  <div class="chart-card__subtitle">Department breakdown</div>
-                </div>
-              </div>
-              <div class="chart-card__scroll-area">
-                <div class="chart-canvas-wrapper" style="height:${deptHeight}px;">
-                  <canvas id="chart-dept" aria-label="Employees by Department" role="img"></canvas>
-                </div>
-              </div>
-            </div>
-
-          </div>
+        <!-- Row 5: Job Title (70%) + Department (30%) -->
+        <div class="insights-bottom mb-6">
+          ${_chartCard('chart-title', 'Employees by Job Title', 'Top job titles', 600)}
+          ${_chartCard('chart-dept',  'Employees by Department', 'Department breakdown', 600)}
         </div>
 
       </div>
@@ -2901,7 +2869,7 @@ const DragDrop = (() => {
     }
 
     // Detach empty grid rows (they may have become empty wrappers)
-    insightsContent.querySelectorAll('.charts-grid').forEach(g => {
+    insightsContent.querySelectorAll('.charts-grid, .insights-bottom').forEach(g => {
       if (!g.querySelector('.chart-card')) g.remove();
     });
 
