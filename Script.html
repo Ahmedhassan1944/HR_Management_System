@@ -676,6 +676,10 @@ const Charts = (() => {
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
 
+    // Calculate dynamic Y-axis width based on longest label length to prevent truncation
+    const maxLabelLen = Math.max(0, ...data.map(d => String(d.label || '').length));
+    const dynamicYAxisWidth = Math.min(320, Math.max(100, maxLabelLen * 6.5 + 16));
+
     _instances[canvasId] = new Chart(canvas, {
       type: 'bar',
       data: {
@@ -714,7 +718,7 @@ const Charts = (() => {
           y: { 
             grid: { display: false },
             afterFit: function(axis) {
-              axis.width = 220;                 // ensure long labels are not truncated
+              axis.width = dynamicYAxisWidth;
             }
           },
         },
