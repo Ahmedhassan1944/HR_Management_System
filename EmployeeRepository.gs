@@ -160,6 +160,21 @@ const EmployeeRepository = (() => {
       }
     });
 
+    // ── Age range ──
+    if (filters.ageRange) {
+      const range = filters.ageRange;
+      results = results.filter(emp => {
+        const age = parseFloat(emp.age);
+        if (isNaN(age)) return range === 'Unknown';
+        if (range === '< 25') return age < 25;
+        if (range === '25–34' || range === '25-34') return age >= 25 && age < 35;
+        if (range === '35–44' || range === '35-44') return age >= 35 && age < 45;
+        if (range === '45–54' || range === '45-54') return age >= 45 && age < 55;
+        if (range === '55+')  return age >= 55;
+        return false;
+      });
+    }
+
     // ── Hire date range ──
     if (filters.dateStart) {
       const ds = new Date(filters.dateStart);

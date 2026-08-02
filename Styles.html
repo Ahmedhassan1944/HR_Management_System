@@ -1454,6 +1454,18 @@ ul, ol { list-style: none; }
   width: 100%;
 }
 
+/* Interactive affordance — all canvases respond to click */
+.chart-canvas-wrapper canvas {
+  cursor: pointer;
+}
+
+/* Subtle highlight ring when a chart card is hovered (Power BI feel) */
+.chart-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-primary-light, #d0e4f8);
+  transition: box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+
 /* ──────────────────────────────────────────────────────────────
    11. SETTINGS PAGE
    ─────────────────────────────────────────────────────────────── */

@@ -857,8 +857,9 @@ const Charts = (() => {
    * Renders a stacked bar chart for expiry status summaries.
    * @param {string} canvasId
    * @param {Object[]} data - [{ status, count }]
+   * @param {Function} [onClickHandler] - callback(status)
    */
-  function expiryStatus(canvasId, data) {
+  function expiryStatus(canvasId, data, onClickHandler = null) {
     _destroy(canvasId);
     const canvas = document.getElementById(canvasId);
     if (!canvas) return;
@@ -896,6 +897,13 @@ const Charts = (() => {
             grace: '15%',                       // extend Y axis 15% beyond data max
           },
           x: { grid: { display: false } },
+        },
+        onClick: (e, elements, chart) => {
+          if (onClickHandler && elements.length > 0) {
+            const index = elements[0].index;
+            const label = chart.data.labels[index];
+            if (label) onClickHandler(label);
+          }
         },
       },
     });
@@ -1519,6 +1527,17 @@ const InsightsModule = (() => {
     const container = document.getElementById('insightsContent');
     if (!container) return;
 
+    // Save scroll position
+    const scrollEl = document.getElementById('appMain');
+    const savedAppMainScroll = scrollEl ? scrollEl.scrollTop : 0;
+    const savedWindowScroll = window.scrollY || document.documentElement.scrollTop;
+
+    // Lock height to prevent the browser from collapsing and losing scroll if the new filtered data is shorter
+    const currentHeight = container.getBoundingClientRect().height;
+    if (currentHeight > 0) {
+      container.style.minHeight = `${currentHeight}px`;
+    }
+
     // Update generated timestamp
     const tsEl = document.getElementById('insightsGeneratedAt');
     if (tsEl && data.generatedAt) {
@@ -1567,31 +1586,94 @@ const InsightsModule = (() => {
     `;
 
     // ── Render Charts ──────────────────────────────────────
-    const crossFilter = (field) => {
-      return (label) => {
-        if (typeof FilterModule !== 'undefined' && FilterModule.setFilter) {
-          FilterModule.setFilter(field, label);
-        }
-      };
+
+
+    /**
+     * Cross-filters the dashboard by a single-select filter field value.
+     * Works for all fields backed by FilterModule.setFilter.
+     * @param {string} field — e.g. 'fp-dept'
+     */
+    const crossFilter = (field) => (label) => {
+      if (typeof FilterModule !== 'undefined' && FilterModule.setFilter) {
+        FilterModule.setFilter(field, label);
+      }
     };
 
-    // Row 1 — Age + Project
-    Charts.verticalBar('chart-age',       data.ageDistribution.map(d => ({ label: d.range, count: d.count })));
+    /**
+     * Cross-filters the dashboard by hire date when a period label is clicked
+     * on the Hiring Trend line chart (e.g. "Jan 2024", "2024-01", "January 2024").
+     */
+    const crossFilterPeriod = (periodLabel) => {
+      if (!periodLabel || typeof FilterModule === 'undefined') return;
+      try {
+        const d = new Date(periodLabel);
+        if (isNaN(d)) return;
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const start = `${y}-${m}-01`;
+        // Last day of month
+        const end = new Date(y, d.getMonth() + 1, 0);
+        const endStr = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+        const startEl = document.getElementById('fp-date-start');
+        const endEl   = document.getElementById('fp-date-end');
+        if (startEl) startEl.value = start;
+        if (endEl)   endEl.value   = endStr;
+        if (FilterModule.apply) FilterModule.apply();
+      } catch (_) { /* ignore parse failures */ }
+    };
+
+    /**
+     * Cross-filters the dashboard based on an expiry status click.
+     * Maps the status label to an activeOnly flag + clears unrelated filters.
+     */
+    const crossFilterExpiry = (statusLabel) => {
+      if (!statusLabel || typeof FilterModule === 'undefined') return;
+      const lower = statusLabel.toLowerCase();
+      const activeEl = document.getElementById('fp-active');
+      if (!activeEl) return;
+      // "valid" / "ok" → active only; anything else → all
+      activeEl.checked = lower.includes('valid') || lower.includes('ok');
+      if (FilterModule.apply) FilterModule.apply();
+    };
+
+    /**
+     * Cross-filters the dashboard by age group directly.
+     */
+    const crossFilterAge = (ageRange) => {
+      if (!ageRange || typeof FilterModule === 'undefined') return;
+      window.__fpAgeRange = ageRange; // Store the clicked range
+      if (FilterModule.apply) FilterModule.apply();
+    };
+
+    // Row 1 — Age (cross-filter by age group) + Project
+    Charts.verticalBar('chart-age',       data.ageDistribution.map(d => ({ label: d.range, count: d.count })), crossFilterAge);
     Charts.horizontalBar('chart-project', data.byProject,      crossFilter('fp-project'));
-    // Row 2 — Donuts
-    Charts.donut('chart-nationality',     data.byNationality,  crossFilter('fp-nationality'));
-    Charts.donut('chart-gender',          data.byGender,       crossFilter('fp-gender'));
-    Charts.donut('chart-class',           data.byClass,        crossFilter('fp-class'));
-    Charts.donut('chart-direct',          data.byDirect,       crossFilter('fp-direct'));
-    // Row 3 — Expiry (Civil first)
-    Charts.expiryStatus('chart-civil-expiry',     data.civilExpiryStats);
-    Charts.expiryStatus('chart-passport-expiry',  data.passportExpiryStats);
-    Charts.expiryStatus('chart-contract-expiry',  data.contractExpiryStats);
-    // Row 4 — Hiring Trend
-    Charts.line('chart-hiring',           data.hiringTrend, 'New Hires');
+    // Row 2 — Donuts (pass null as title so crossFilter lands on onClickHandler)
+    Charts.donut('chart-nationality',     data.byNationality,  null, crossFilter('fp-nationality'));
+    Charts.donut('chart-gender',          data.byGender,       null, crossFilter('fp-gender'));
+    Charts.donut('chart-class',           data.byClass,        null, crossFilter('fp-class'));
+    Charts.donut('chart-direct',          data.byDirect,       null, crossFilter('fp-direct'));
+    // Row 3 — Expiry (all three are now interactive)
+    Charts.expiryStatus('chart-civil-expiry',     data.civilExpiryStats,    crossFilterExpiry);
+    Charts.expiryStatus('chart-passport-expiry',  data.passportExpiryStats, crossFilterExpiry);
+    Charts.expiryStatus('chart-contract-expiry',  data.contractExpiryStats, crossFilterExpiry);
+    // Row 4 — Hiring Trend (click a period point to filter by that hire month)
+    Charts.line('chart-hiring',           data.hiringTrend, 'New Hires',   crossFilterPeriod);
     // Bottom — Bar Charts
     Charts.horizontalBar('chart-title',   data.byTitle,        crossFilter('fp-title'));
     Charts.horizontalBar('chart-dept',    data.byDepartment,   crossFilter('fp-dept'));
+
+    // Synchronously initialise Drag & Drop layout before browser paints
+    if (typeof DragDrop !== 'undefined' && DragDrop.init) {
+      DragDrop.init();
+    }
+
+    // Release height lock
+    container.style.minHeight = '';
+
+    // Final scroll restoration after all DOM manipulation is complete
+    if (scrollEl) scrollEl.scrollTop = savedAppMainScroll;
+    window.scrollTo(0, savedWindowScroll);
   }
 
   // ── Helpers ────────────────────────────────────────────────
@@ -2521,6 +2603,7 @@ const FilterModule = (() => {
       salaryMin:     parseFloat(document.getElementById('fp-salary-min')?.value) || null,
       salaryMax:     parseFloat(document.getElementById('fp-salary-max')?.value) || null,
       activeOnly:    document.getElementById('fp-active')?.checked ?? false,
+      ageRange:      window.__fpAgeRange || null,
     };
   }
 
@@ -2652,6 +2735,9 @@ const FilterModule = (() => {
     // Clear preset selector
     const savedEl = document.getElementById('fp-saved');
     if (savedEl) savedEl.value = '';
+
+    // Clear programmatic hidden filters (like ageRange from chart clicks)
+    window.__fpAgeRange = null;
 
     // Update indicator
     _updateActiveIndicator();
@@ -3030,17 +3116,6 @@ const DragDrop = (() => {
   }
 
   return { init, reset };
-})();
-
-// Auto-init via MutationObserver — fires after InsightsModule.render() injects cards
-(() => {
-  let _timer = null;
-  const _observer = new MutationObserver(() => {
-    // Debounce: wait until DOM settles before initialising
-    clearTimeout(_timer);
-    _timer = setTimeout(() => DragDrop.init(), 80);
-  });
-  _observer.observe(document.body, { childList: true, subtree: true });
 })();
 
 </script>
